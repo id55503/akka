@@ -93,6 +93,8 @@ object Dependencies {
   val clusterSharding = Seq(Test.junit, Test.scalatest, Test.commonsIo)
 
   val clusterMetrics = Seq(Provided.sigarLoader, Test.slf4jJul, Test.slf4jLog4j, Test.logback, Test.mockito)
+  
+  val distributedData = Seq(Test.junit, Test.scalatest)
 
   val slf4j = Seq(slf4jApi, Test.logback)
 
