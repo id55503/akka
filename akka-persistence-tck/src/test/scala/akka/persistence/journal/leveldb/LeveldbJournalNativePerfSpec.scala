@@ -1,9 +1,9 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.persistence.journal.leveldb
 
-import akka.persistence.journal.{ JournalPerfSpec, JournalSpec }
+import akka.persistence.journal.{ JournalPerfSpec }
 import akka.persistence.{ PersistenceSpec, PluginCleanup }
 import org.scalatest.DoNotDiscover
 
@@ -13,4 +13,8 @@ class LeveldbJournalNativePerfSpec extends JournalPerfSpec(
     "leveldb",
     "LeveldbJournalNativePerfSpec",
     extraConfig = Some("akka.persistence.journal.leveldb.native = on")))
-  with PluginCleanup
+  with PluginCleanup {
+
+  override def supportsRejectingNonSerializableObjects = true
+
+}

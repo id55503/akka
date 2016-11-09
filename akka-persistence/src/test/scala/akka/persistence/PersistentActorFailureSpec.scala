@@ -1,75 +1,87 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.persistence
 
-import akka.actor._
-import akka.persistence.journal.AsyncWriteProxy
-import akka.persistence.journal.inmem.InmemStore
-import akka.testkit.{ ImplicitSender, AkkaSpec }
-import akka.util.Timeout
-import com.typesafe.config.Config
-import scala.concurrent.duration._
-import akka.persistence.journal.AsyncWriteTarget.{ ReplayFailure, ReplaySuccess, ReplayMessages, WriteMessages }
-import scala.language.postfixOps
-import scala.Some
-import akka.actor.OneForOneStrategy
+import akka.actor.{ OneForOneStrategy, _ }
+import akka.persistence.journal.AsyncWriteJournal
+import akka.testkit.{ EventFilter, ImplicitSender, TestEvent, TestProbe }
+
+import scala.collection.immutable
 import scala.util.control.NoStackTrace
-import akka.testkit.TestProbe
+import scala.util.{ Failure, Try }
+import akka.persistence.journal.inmem.InmemJournal
+
+import scala.concurrent.Future
 
 object PersistentActorFailureSpec {
-  import PersistentActorSpec.Cmd
-  import PersistentActorSpec.Evt
-  import PersistentActorSpec.ExamplePersistentActor
+  import PersistentActorSpec.{ Cmd, Evt, ExamplePersistentActor }
 
   class SimulatedException(msg: String) extends RuntimeException(msg) with NoStackTrace
+  class SimulatedSerializationException(msg: String) extends RuntimeException(msg) with NoStackTrace
 
-  class FailingInmemJournal extends AsyncWriteProxy {
-    import AsyncWriteProxy.SetStore
+  class FailingInmemJournal extends InmemJournal {
 
-    val timeout = Timeout(3 seconds)
-
-    override def preStart(): Unit = {
-      super.preStart()
-      self ! SetStore(context.actorOf(Props[FailingInmemStore]))
+    override def asyncWriteMessages(messages: immutable.Seq[AtomicWrite]): Future[immutable.Seq[Try[Unit]]] = {
+      if (isWrong(messages)) throw new SimulatedException("Simulated Store failure")
+      else {
+        val ser = checkSerializable(messages)
+        if (ser.exists(_.isFailure))
+          Future.successful(ser)
+        else
+          super.asyncWriteMessages(messages)
+      }
     }
 
-  }
-
-  class FailingInmemStore extends InmemStore {
-    def failingReceive: Receive = {
-      case w: WriteMessages if isWrong(w) ⇒
-        throw new SimulatedException("Simulated Store failure")
-      case ReplayMessages(pid, fromSnr, toSnr, max) ⇒
-        val readFromStore = read(pid, fromSnr, toSnr, max)
-        if (readFromStore.length == 0)
-          sender() ! ReplaySuccess
-        else if (isCorrupt(readFromStore))
-          sender() ! ReplayFailure(new SimulatedException(s"blahonga $fromSnr $toSnr"))
-        else {
-          readFromStore.foreach(sender() ! _)
-          sender() ! ReplaySuccess
-        }
+    override def asyncReplayMessages(persistenceId: String, fromSequenceNr: Long, toSequenceNr: Long, max: Long)(
+      recoveryCallback: PersistentRepr ⇒ Unit): Future[Unit] = {
+      val highest = highestSequenceNr(persistenceId)
+      val readFromStore = read(persistenceId, fromSequenceNr, toSequenceNr, max)
+      if (readFromStore.isEmpty)
+        Future.successful(())
+      else if (isCorrupt(readFromStore))
+        Future.failed(new SimulatedException(s"blahonga $fromSequenceNr $toSequenceNr"))
+      else {
+        readFromStore.foreach(recoveryCallback)
+        Future.successful(())
+      }
     }
 
-    def isWrong(w: WriteMessages): Boolean =
-      w.messages.exists {
-        case PersistentRepr(Evt(s: String), _) ⇒ s.contains("wrong")
-        case x                                 ⇒ false
+    def isWrong(messages: immutable.Seq[AtomicWrite]): Boolean =
+      messages.exists {
+        case a: AtomicWrite ⇒
+          a.payload.exists { case PersistentRepr(Evt(s: String), _) ⇒ s.contains("wrong") }
+        case _ ⇒ false
+      }
+
+    def checkSerializable(messages: immutable.Seq[AtomicWrite]): immutable.Seq[Try[Unit]] =
+      messages.collect {
+        case a: AtomicWrite ⇒
+          a.payload.collectFirst {
+            case PersistentRepr(Evt(s: String), _: Long) if s.contains("not serializable") ⇒ s
+          } match {
+            case Some(s) ⇒ Failure(new SimulatedSerializationException(s))
+            case None    ⇒ AsyncWriteJournal.successUnit
+          }
       }
 
     def isCorrupt(events: Seq[PersistentRepr]): Boolean =
       events.exists { case PersistentRepr(Evt(s: String), _) ⇒ s.contains("corrupt") }
 
-    override def receive = failingReceive.orElse(super.receive)
+  }
+
+  class OnRecoveryFailurePersistentActor(name: String, probe: ActorRef) extends ExamplePersistentActor(name) {
+    val receiveCommand: Receive = commonBehavior orElse {
+      case c @ Cmd(txt) ⇒ persist(Evt(txt))(updateState)
+    }
+
+    override protected def onRecoveryFailure(cause: Throwable, event: Option[Any]): Unit =
+      probe ! "recovery-failure:" + cause.getMessage
   }
 
   class Supervisor(testActor: ActorRef) extends Actor {
     override def supervisorStrategy = OneForOneStrategy(loggingEnabled = false) {
-      case e: ActorKilledException ⇒
-        testActor ! e
-        SupervisorStrategy.Stop
       case e ⇒
         testActor ! e
         SupervisorStrategy.Restart
@@ -100,12 +112,9 @@ object PersistentActorFailureSpec {
     val failingRecover: Receive = {
       case Evt(data) if data == "bad" ⇒
         throw new SimulatedException("Simulated exception from receiveRecover")
-
-      case r @ RecoveryFailure(cause) if recoveryFailureProbe.isDefined ⇒
-        recoveryFailureProbe.foreach { _ ! r }
     }
 
-    override def receiveRecover: Receive = failingRecover orElse super.receiveRecover
+    override def receiveRecover: Receive = failingRecover.orElse[Any, Unit](super.receiveRecover)
 
   }
 
@@ -131,13 +140,16 @@ object PersistentActorFailureSpec {
   }
 }
 
-class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem", "SnapshotFailureRobustnessSpec", extraConfig = Some(
+class PersistentActorFailureSpec extends PersistenceSpec(PersistenceSpec.config("inmem", "SnapshotFailureRobustnessSpec", extraConfig = Some(
   """
   akka.persistence.journal.inmem.class = "akka.persistence.PersistentActorFailureSpec$FailingInmemJournal"
-  """))) with PersistenceSpec with ImplicitSender {
+  """))) with ImplicitSender {
 
   import PersistentActorFailureSpec._
   import PersistentActorSpec._
+
+  system.eventStream.publish(TestEvent.Mute(
+    EventFilter[akka.pattern.AskTimeoutException]()))
 
   def prepareFailingRecovery(): Unit = {
     val persistentActor = namedPersistentActor[FailingRecovery]
@@ -150,7 +162,7 @@ class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem"
   }
 
   "A persistent actor" must {
-    "throw ActorKilledException if recovery from persisted events fail" in {
+    "stop if recovery from persisted events fail" in {
       val persistentActor = namedPersistentActor[Behavior1PersistentActor]
       persistentActor ! Cmd("corrupt")
       persistentActor ! GetState
@@ -158,85 +170,70 @@ class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem"
 
       // recover by creating another with same name
       system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[Behavior1PersistentActor], name)
-      expectMsgType[ActorRef]
-      expectMsgType[ActorKilledException]
+      val ref = expectMsgType[ActorRef]
+      watch(ref)
+      expectTerminated(ref)
     }
-    "throw ActorKilledException if persist fails" in {
+    "call onRecoveryFailure when recovery from persisted events fails" in {
+      val props = Props(classOf[OnRecoveryFailurePersistentActor], name, testActor)
+
+      val persistentActor = system.actorOf(props)
+      persistentActor ! Cmd("corrupt")
+      persistentActor ! GetState
+      expectMsg(List("corrupt"))
+
+      // recover by creating another with same name
+      // note that if we used testActor as failure detector passed in
+      // the props we'd have a race on our hands (#21229)
+      val failProbe = TestProbe()
+      val sameNameProps = Props(classOf[OnRecoveryFailurePersistentActor], name, failProbe.ref)
+      system.actorOf(Props(classOf[Supervisor], testActor)) ! sameNameProps
+      val ref = expectMsgType[ActorRef]
+      failProbe.expectMsg("recovery-failure:blahonga 1 1")
+      watch(ref)
+      expectTerminated(ref)
+    }
+    "call onPersistFailure and stop when persist fails" in {
       system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[Behavior1PersistentActor], name)
       val persistentActor = expectMsgType[ActorRef]
+      watch(persistentActor)
       persistentActor ! Cmd("wrong")
-      expectMsgType[ActorKilledException]
+      expectMsg("Failure: wrong-1")
+      expectTerminated(persistentActor)
     }
-    "throw ActorKilledException if persistAsync fails" in {
+    "call onPersistFailure and stop if persistAsync fails" in {
       system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[AsyncPersistPersistentActor], name)
       val persistentActor = expectMsgType[ActorRef]
       persistentActor ! Cmd("a")
+      watch(persistentActor)
       expectMsg("a") // reply before persistAsync
       expectMsg("a-1") // reply after successful persistAsync
       persistentActor ! Cmd("wrong")
       expectMsg("wrong") // reply before persistAsync
-      expectMsgType[ActorKilledException]
+      expectMsg("Failure: wrong-2") // onPersistFailure sent message
+      expectTerminated(persistentActor)
     }
-    "throw ActorKilledException if receiveRecover fails" in {
+    "call onPersistRejected and continue if persist rejected" in {
+      system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[Behavior1PersistentActor], name)
+      val persistentActor = expectMsgType[ActorRef]
+      persistentActor ! Cmd("not serializable")
+      expectMsg("Rejected: not serializable-1")
+      expectMsg("Rejected: not serializable-2")
+
+      persistentActor ! Cmd("a")
+      persistentActor ! GetState
+      expectMsg(List("a-1", "a-2"))
+    }
+    "stop if receiveRecover fails" in {
       prepareFailingRecovery()
 
       // recover by creating another with same name
       system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[FailingRecovery], name)
-      expectMsgType[ActorRef]
-      expectMsgType[ActorKilledException]
+      val ref = expectMsgType[ActorRef]
+      watch(ref)
+      expectTerminated(ref)
     }
-    "include failing event in RecoveryFailure message" in {
-      prepareFailingRecovery()
 
-      // recover by creating another with same name
-      val probe = TestProbe()
-      system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[FailingRecovery], name, Some(probe.ref))
-      expectMsgType[ActorRef]
-      val recoveryFailure = probe.expectMsgType[RecoveryFailure]
-      recoveryFailure.payload should ===(Some(Evt("bad")))
-      recoveryFailure.sequenceNr should ===(Some(3L))
-    }
-    "continue by handling RecoveryFailure" in {
-      prepareFailingRecovery()
-
-      // recover by creating another with same name
-      val probe = TestProbe()
-      system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[FailingRecovery], name, Some(probe.ref))
-      val persistentActor = expectMsgType[ActorRef]
-      val recoveryFailure = probe.expectMsgType[RecoveryFailure]
-      // continue
-      persistentActor ! Cmd("d")
-      persistentActor ! GetState
-      // "bad" failed, and "c" was not replayed
-      expectMsg(List("a", "b", "d"))
-    }
-    "support resume after recovery failure" in {
-      prepareFailingRecovery()
-
-      // recover by creating another with same name
-      system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[FailingRecovery], name)
-      val persistentActor = expectMsgType[ActorRef]
-      expectMsgType[ActorKilledException] // from supervisor
-      // resume
-      persistentActor ! Cmd("d")
-      persistentActor ! GetState
-      // "bad" failed, and "c" was not replayed
-      expectMsg(List("a", "b", "d"))
-    }
-    "support resume after persist failure" in {
-      system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[Behavior1PersistentActor], name)
-      val persistentActor = expectMsgType[ActorRef]
-      persistentActor ! Cmd("a")
-      persistentActor ! Cmd("wrong")
-      persistentActor ! Cmd("b")
-      // Behavior1PersistentActor persists 2 events per Cmd,
-      // and therefore 2 exceptions from supervisor
-      expectMsgType[ActorKilledException]
-      expectMsgType[ActorKilledException]
-      persistentActor ! Cmd("c")
-      persistentActor ! GetState
-      expectMsg(List("a-1", "a-2", "b-1", "b-2", "c-1", "c-2"))
-    }
     "support resume when persist followed by exception" in {
       system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[ThrowingActor1], name)
       val persistentActor = expectMsgType[ActorRef]
@@ -248,6 +245,19 @@ class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem"
       persistentActor ! GetState
       expectMsg(List("a", "err", "b", "c"))
     }
+
+    "support restart when persist followed by exception" in {
+      system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[ThrowingActor1], name)
+      val persistentActor = expectMsgType[ActorRef]
+      persistentActor ! Cmd("a")
+      persistentActor ! Cmd("err")
+      persistentActor ! Cmd("b")
+      expectMsgType[SimulatedException] // from supervisor
+      persistentActor ! Cmd("c")
+      persistentActor ! GetState
+      expectMsg(List("a", "err", "b", "c"))
+    }
+
     "support resume when persist handler throws exception" in {
       system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[ThrowingActor2], name)
       val persistentActor = expectMsgType[ActorRef]
@@ -259,6 +269,48 @@ class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem"
       persistentActor ! Cmd("d")
       persistentActor ! GetState
       expectMsg(List("a", "b", "c", "d"))
+    }
+
+    "support restart when persist handler throws exception" in {
+      system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[ThrowingActor2], name)
+      val persistentActor = expectMsgType[ActorRef]
+      persistentActor ! Cmd("a")
+      persistentActor ! Cmd("b")
+      persistentActor ! Cmd("err")
+      persistentActor ! Cmd("c")
+      expectMsgType[SimulatedException] // from supervisor
+      persistentActor ! Cmd("d")
+      persistentActor ! GetState
+      // err was stored, and was be replayed
+      expectMsg(List("a", "b", "err", "c", "d"))
+    }
+
+    "detect overlapping writers during replay" in {
+      val p1 = namedPersistentActor[Behavior1PersistentActor]
+      p1 ! Cmd("a")
+      p1 ! GetState
+      expectMsg(List("a-1", "a-2"))
+
+      // create another with same persistenceId
+      val p2 = namedPersistentActor[Behavior1PersistentActor]
+      p2 ! GetState
+      expectMsg(List("a-1", "a-2"))
+
+      // continue writing from the old writer
+      p1 ! Cmd("b")
+      p1 ! GetState
+      expectMsg(List("a-1", "a-2", "b-1", "b-2"))
+
+      p2 ! Cmd("c")
+      p2 ! GetState
+      expectMsg(List("a-1", "a-2", "c-1", "c-2"))
+
+      // Create yet another one with same persistenceId, b-1 and b-2 discarded during replay
+      EventFilter.warning(start = "Invalid replayed event", occurrences = 2) intercept {
+        val p3 = namedPersistentActor[Behavior1PersistentActor]
+        p3 ! GetState
+        expectMsg(List("a-1", "a-2", "c-1", "c-2"))
+      }
     }
 
   }

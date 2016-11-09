@@ -47,20 +47,17 @@ compiler will only permit us to send messages of this type, other usage will
 not be accepted.
 
 The accepted message types of an Actor together with all reply types defines
-the protocol spoken by this Actor; in this case it is a simply request–reply
+the protocol spoken by this Actor; in this case it is a simple request–reply
 protocol but Actors can model arbitrarily complex protocols when needed. The
 protocol is bundled together with the behavior that implements it in a nicely
 wrapped scope—the ``HelloWorld`` object.
 
-Now we want to try out this Actor, so we must start an Actor system to host it:
+Now we want to try out this Actor, so we must start an ActorSystem to host it:
 
 .. includecode:: code/docs/akka/typed/IntroSpec.scala#hello-world
 
 After importing the Actor’s protocol definition we start an Actor system from
-the defined behavior, wrapping it in :class:`Props` like an actor on stage. The
-props we are giving to this one are just the defaults, we could at this point
-also configure how and where the Actor should be deployed in a clustered
-system.
+the defined behavior.
 
 As Carl Hewitt said, one Actor is no Actor—it would be quite lonely with
 nobody to talk to. In this sense the example is a little cruel because we only
@@ -72,8 +69,8 @@ Note that the :class:`Future` that is returned by the “ask” operation is
 properly typed already, no type checks or casts needed. This is possible due to
 the type information that is part of the message protocol: the ``?`` operator
 takes as argument a function that accepts an :class:`ActorRef[U]` (which
-explains the ``_`` hole in the expression on line 6 above) and the ``replyTo``
-parameter which we fill in like that is of type ``ActorRef[Greeted]``, which
+explains the ``_`` hole in the expression on line 7 above) and the ``replyTo``
+parameter which we fill in is of type ``ActorRef[Greeted]``, which
 means that the value that fulfills the :class:`Promise` can only be of type
 :class:`Greeted`.
 
@@ -103,9 +100,9 @@ fundamental actions:
 .. _`Actor Model`: http://en.wikipedia.org/wiki/Actor_model
 
   1. send a finite number of messages to Actors it knows
-  
+
   2. create a finite number of new Actors
-  
+
   3. designate the behavior to be applied to the next message
 
 The Akka Typed project expresses these actions using behaviors and addresses.
@@ -195,7 +192,7 @@ The behavior that we declare here can handle both subtypes of :class:`Command`.
 trigger the dissemination of the contained chat room message to all connected
 clients. But we do not want to give the ability to send
 :class:`PostSessionMessage` commands to arbitrary clients, we reserve that
-right to the wrappers we create—otherwise clients could pose as complete
+right to the wrappers we create—otherwise clients could pose as completely
 different screen names (imagine the :class:`GetSession` protocol to include
 authentication information to further secure this). Therefore we narrow the
 behavior down to only accepting :class:`GetSession` commands before exposing it
@@ -261,7 +258,7 @@ choice:
 In good tradition we call the ``main`` Actor what it is, it directly
 corresponds to the ``main`` method in a traditional Java application. This
 Actor will perform its job on its own accord, we do not need to send messages
-from the outside, so we declare it to be of type ``Unit``. Actors receive not
+from the outside, so we declare it to be of type ``NotUsed``. Actors receive not
 only external messages, they also are notified of certain system events,
 so-called Signals. In order to get access to those we choose to implement this
 particular one using the :class:`Full` behavior decorator. The name stems from
@@ -305,7 +302,7 @@ reply-to address in the message, which both burdens the user with this task but
 also places this aspect of protocol design where it belongs.
 
 The other prominent difference is the removal of the :class:`Actor` trait. In
-order to avoid closing over instable references from different execution
+order to avoid closing over unstable references from different execution
 contexts (e.g. Future transformations) we turned all remaining methods that
 were on this trait into messages: the behavior receives the
 :class:`ActorContext` as an argument during processing and the lifecycle hooks
@@ -318,4 +315,3 @@ that behaviors can nicely be composed and decorated, see the :class:`And`,
 :class:`Or`, :class:`Widened`, :class:`ContextAware` combinators; nothing about
 these is special or internal, new combinators can be written as external
 libraries or tailor-made for each project.
-

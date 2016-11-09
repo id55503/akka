@@ -1,15 +1,13 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
 
-import language.implicitConversions
-
-import scala.collection.immutable
-import scala.collection.GenTraversableOnce
 import akka.actor.Address
 import MemberStatus._
+
+import scala.runtime.AbstractFunction2
 
 /**
  * Represents the address, current status, and roles of a cluster member node.
@@ -19,11 +17,10 @@ import MemberStatus._
  */
 @SerialVersionUID(1L)
 class Member private[cluster] (
-  val uniqueAddress: UniqueAddress,
-  /** INTERNAL API **/
-  private[cluster] val upNumber: Int,
-  val status: MemberStatus,
-  val roles: Set[String]) extends Serializable {
+  val uniqueAddress:             UniqueAddress,
+  private[cluster] val upNumber: Int, // INTERNAL API
+  val status:                    MemberStatus,
+  val roles:                     Set[String]) extends Serializable {
 
   def address: Address = uniqueAddress.address
 
@@ -48,13 +45,18 @@ class Member private[cluster] (
    * cluster. A member that joined after removal of another member may be
    * considered older than the removed member.
    */
-  def isOlderThan(other: Member): Boolean = upNumber < other.upNumber
+  def isOlderThan(other: Member): Boolean =
+    if (upNumber == other.upNumber)
+      Member.addressOrdering.compare(address, other.address) < 0
+    else
+      upNumber < other.upNumber
 
   def copy(status: MemberStatus): Member = {
     val oldStatus = this.status
     if (status == oldStatus) this
     else {
-      require(allowedTransitions(oldStatus)(status),
+      require(
+        allowedTransitions(oldStatus)(status),
         s"Invalid member status transition [ ${this} -> ${status}]")
       new Member(uniqueAddress, upNumber, status, roles)
     }
@@ -109,6 +111,8 @@ object Member {
       case (_, Exiting)         ⇒ true
       case (Joining, _)         ⇒ false
       case (_, Joining)         ⇒ true
+      case (WeaklyUp, _)        ⇒ false
+      case (_, WeaklyUp)        ⇒ true
       case _                    ⇒ ordering.compare(a, b) <= 0
     }
   }
@@ -120,6 +124,13 @@ object Member {
     def compare(a: Member, b: Member): Int = {
       a.uniqueAddress compare b.uniqueAddress
     }
+  }
+
+  /**
+   * Sort members by age, i.e. using [[Member#isOlderThan]].
+   */
+  val ageOrdering: Ordering[Member] = Ordering.fromLessThan[Member] {
+    (a, b) ⇒ a.isOlderThan(b)
   }
 
   def pickHighestPriority(a: Set[Member], b: Set[Member]): Set[Member] = {
@@ -140,18 +151,25 @@ object Member {
   /**
    * Picks the Member with the highest "priority" MemberStatus.
    */
-  def highestPriorityOf(m1: Member, m2: Member): Member = (m1.status, m2.status) match {
-    case (Removed, _) ⇒ m1
-    case (_, Removed) ⇒ m2
-    case (Down, _)    ⇒ m1
-    case (_, Down)    ⇒ m2
-    case (Exiting, _) ⇒ m1
-    case (_, Exiting) ⇒ m2
-    case (Leaving, _) ⇒ m1
-    case (_, Leaving) ⇒ m2
-    case (Joining, _) ⇒ m2
-    case (_, Joining) ⇒ m1
-    case (Up, Up)     ⇒ m1
+  def highestPriorityOf(m1: Member, m2: Member): Member = {
+    if (m1.status == m2.status)
+      // preserve the oldest in case of different upNumber
+      if (m1.isOlderThan(m2)) m1 else m2
+    else (m1.status, m2.status) match {
+      case (Removed, _)  ⇒ m1
+      case (_, Removed)  ⇒ m2
+      case (Down, _)     ⇒ m1
+      case (_, Down)     ⇒ m2
+      case (Exiting, _)  ⇒ m1
+      case (_, Exiting)  ⇒ m2
+      case (Leaving, _)  ⇒ m1
+      case (_, Leaving)  ⇒ m2
+      case (Joining, _)  ⇒ m2
+      case (_, Joining)  ⇒ m1
+      case (WeaklyUp, _) ⇒ m2
+      case (_, WeaklyUp) ⇒ m1
+      case (Up, Up)      ⇒ m1
+    }
   }
 
 }
@@ -159,12 +177,17 @@ object Member {
 /**
  * Defines the current status of a cluster member node
  *
- * Can be one of: Joining, Up, Leaving, Exiting and Down.
+ * Can be one of: Joining, WeaklyUp, Up, Leaving, Exiting and Down and Removed.
  */
-abstract class MemberStatus
+sealed abstract class MemberStatus
 
 object MemberStatus {
   @SerialVersionUID(1L) case object Joining extends MemberStatus
+  /**
+   * WeaklyUp is an EXPERIMENTAL feature and is subject to change until
+   * it has received more real world testing.
+   */
+  @SerialVersionUID(1L) case object WeaklyUp extends MemberStatus
   @SerialVersionUID(1L) case object Up extends MemberStatus
   @SerialVersionUID(1L) case object Leaving extends MemberStatus
   @SerialVersionUID(1L) case object Exiting extends MemberStatus
@@ -175,6 +198,13 @@ object MemberStatus {
    * Java API: retrieve the “joining” status singleton
    */
   def joining: MemberStatus = Joining
+
+  /**
+   * Java API: retrieve the “weaklyUp” status singleton.
+   * WeaklyUp is an EXPERIMENTAL feature and is subject to change until
+   * it has received more real world testing.
+   */
+  def weaklyUp: MemberStatus = WeaklyUp
 
   /**
    * Java API: retrieve the “up” status singleton
@@ -206,12 +236,21 @@ object MemberStatus {
    */
   private[cluster] val allowedTransitions: Map[MemberStatus, Set[MemberStatus]] =
     Map(
-      Joining -> Set(Up, Down, Removed),
-      Up -> Set(Leaving, Down, Removed),
-      Leaving -> Set(Exiting, Down, Removed),
-      Down -> Set(Removed),
-      Exiting -> Set(Removed, Down),
-      Removed -> Set.empty[MemberStatus])
+      Joining → Set(WeaklyUp, Up, Down, Removed),
+      WeaklyUp → Set(Up, Down, Removed),
+      Up → Set(Leaving, Down, Removed),
+      Leaving → Set(Exiting, Down, Removed),
+      Down → Set(Removed),
+      Exiting → Set(Removed, Down),
+      Removed → Set.empty[MemberStatus])
+}
+
+object UniqueAddress extends AbstractFunction2[Address, Int, UniqueAddress] {
+
+  // for binary compatibility
+  @deprecated("Use Long UID apply instead", since = "2.4.11")
+  def apply(address: Address, uid: Int) = new UniqueAddress(address, uid.toLong)
+
 }
 
 /**
@@ -220,12 +259,29 @@ object MemberStatus {
  * incarnations of a member with same hostname and port.
  */
 @SerialVersionUID(1L)
-final case class UniqueAddress(address: Address, uid: Int) extends Ordered[UniqueAddress] {
-  override def hashCode = uid
+final case class UniqueAddress(address: Address, longUid: Long) extends Ordered[UniqueAddress] {
+
+  override def hashCode = java.lang.Long.hashCode(longUid)
 
   def compare(that: UniqueAddress): Int = {
     val result = Member.addressOrdering.compare(this.address, that.address)
-    if (result == 0) if (this.uid < that.uid) -1 else if (this.uid == that.uid) 0 else 1
+    if (result == 0) if (this.longUid < that.longUid) -1 else if (this.longUid == that.longUid) 0 else 1
     else result
   }
+
+  // for binary compatibility
+
+  @deprecated("Use Long UID constructor instead", since = "2.4.11")
+  def this(address: Address, uid: Int) = this(address, uid.toLong)
+
+  @deprecated("Use longUid instead", since = "2.4.11")
+  def uid = longUid.toInt
+
+  /**
+   * For binary compatibility
+   * Stops `copy(Address, Long)` copy from being generated, use `apply` instead.
+   */
+  @deprecated("Use Long UID constructor instead", since = "2.4.11")
+  def copy(address: Address = address, uid: Int = uid) = new UniqueAddress(address, uid)
+
 }

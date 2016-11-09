@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.routing
@@ -7,20 +7,24 @@ package akka.cluster.routing
 import com.typesafe.config.ConfigFactory
 import akka.actor.Address
 import akka.actor.RootActorPath
+import akka.remote.RARP
 import akka.testkit.AkkaSpec
 import akka.routing.ActorSelectionRoutee
 import akka.routing.ActorRefRoutee
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class WeightedRouteesSpec extends AkkaSpec(ConfigFactory.parseString("""
-      akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+      akka.actor.provider = "cluster"
       akka.remote.netty.tcp.port = 0
       """)) {
 
-  val a1 = Address("akka.tcp", "sys", "a1", 2551)
-  val b1 = Address("akka.tcp", "sys", "b1", 2551)
-  val c1 = Address("akka.tcp", "sys", "c1", 2551)
-  val d1 = Address("akka.tcp", "sys", "d1", 2551)
+  val protocol =
+    if (RARP(system).provider.remoteSettings.Artery.Enabled) "akka"
+    else "akka.tcp"
+
+  val a1 = Address(protocol, "sys", "a1", 2551)
+  val b1 = Address(protocol, "sys", "b1", 2551)
+  val c1 = Address(protocol, "sys", "c1", 2551)
+  val d1 = Address(protocol, "sys", "d1", 2551)
 
   val routeeA = ActorSelectionRoutee(system.actorSelection(RootActorPath(a1) / "user" / "a"))
   val routeeB = ActorSelectionRoutee(system.actorSelection(RootActorPath(b1) / "user" / "b"))
@@ -31,7 +35,7 @@ class WeightedRouteesSpec extends AkkaSpec(ConfigFactory.parseString("""
   "WeightedRoutees" must {
 
     "allocate weighted routees" in {
-      val weights = Map(a1 -> 1, b1 -> 3, c1 -> 10)
+      val weights = Map(a1 → 1, b1 → 3, c1 → 10)
       val weighted = new WeightedRoutees(routees, a1, weights)
 
       weighted(1) should ===(routeeA)
@@ -47,7 +51,7 @@ class WeightedRouteesSpec extends AkkaSpec(ConfigFactory.parseString("""
         empty.total
       }
 
-      val empty2 = new WeightedRoutees(Vector(routeeA), a1, Map(a1 -> 0))
+      val empty2 = new WeightedRoutees(Vector(routeeA), a1, Map(a1 → 0))
       empty2.isEmpty should ===(true)
       intercept[IllegalArgumentException] {
         empty2.total
@@ -67,7 +71,7 @@ class WeightedRouteesSpec extends AkkaSpec(ConfigFactory.parseString("""
     }
 
     "allocate routees for undefined weight" in {
-      val weights = Map(a1 -> 1, b1 -> 7)
+      val weights = Map(a1 → 1, b1 → 7)
       val weighted = new WeightedRoutees(routees, a1, weights)
 
       weighted(1) should ===(routeeA)
@@ -78,7 +82,7 @@ class WeightedRouteesSpec extends AkkaSpec(ConfigFactory.parseString("""
     }
 
     "allocate weighted local routees" in {
-      val weights = Map(a1 -> 2, b1 -> 1, c1 -> 10)
+      val weights = Map(a1 → 2, b1 → 1, c1 → 10)
       val routees2 = Vector(testActorRoutee, routeeB, routeeC)
       val weighted = new WeightedRoutees(routees2, a1, weights)
 
@@ -87,7 +91,7 @@ class WeightedRouteesSpec extends AkkaSpec(ConfigFactory.parseString("""
     }
 
     "not allocate ref with weight zero" in {
-      val weights = Map(a1 -> 0, b1 -> 2, c1 -> 10)
+      val weights = Map(a1 → 0, b1 → 2, c1 → 10)
       val weighted = new WeightedRoutees(routees, a1, weights)
 
       1 to weighted.total foreach { weighted(_) should not be (routeeA) }

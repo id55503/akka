@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.transport.netty
 
@@ -12,7 +12,6 @@ import java.net.InetSocketAddress
 import org.jboss.netty.buffer.{ ChannelBuffers, ChannelBuffer }
 import org.jboss.netty.channel._
 import scala.concurrent.{ Future, Promise }
-import scala.util.{ Success, Failure }
 
 /**
  * INTERNAL API
@@ -29,10 +28,11 @@ private[remote] trait TcpHandlers extends CommonHandlers {
 
   import ChannelLocalActor._
 
-  override def registerListener(channel: Channel,
-                                listener: HandleEventListener,
-                                msg: ChannelBuffer,
-                                remoteSocketAddress: InetSocketAddress): Unit = ChannelLocalActor.set(channel, Some(listener))
+  override def registerListener(
+    channel:             Channel,
+    listener:            HandleEventListener,
+    msg:                 ChannelBuffer,
+    remoteSocketAddress: InetSocketAddress): Unit = ChannelLocalActor.set(channel, Some(listener))
 
   override def createHandle(channel: Channel, localAddress: Address, remoteAddress: Address): AssociationHandle =
     new TcpAssociationHandle(localAddress, remoteAddress, transport, channel)
@@ -76,10 +76,11 @@ private[remote] class TcpClientHandler(_transport: NettyTransport, remoteAddress
 /**
  * INTERNAL API
  */
-private[remote] class TcpAssociationHandle(val localAddress: Address,
-                                           val remoteAddress: Address,
-                                           val transport: NettyTransport,
-                                           private val channel: Channel)
+private[remote] class TcpAssociationHandle(
+  val localAddress:    Address,
+  val remoteAddress:   Address,
+  val transport:       NettyTransport,
+  private val channel: Channel)
   extends AssociationHandle {
   import transport.executionContext
 

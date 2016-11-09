@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package docs.dispatcher
@@ -52,8 +52,9 @@ class MyUnboundedMailbox extends MailboxType
   }
 
   // The create method is called to create the MessageQueue
-  final override def create(owner: Option[ActorRef],
-                            system: Option[ActorSystem]): MessageQueue =
+  final override def create(
+    owner:  Option[ActorRef],
+    system: Option[ActorSystem]): MessageQueue =
     new MyMessageQueue()
 }
 //#mailbox-implementation-example

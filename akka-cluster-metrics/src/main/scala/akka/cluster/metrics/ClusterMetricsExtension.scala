@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.metrics
 
@@ -44,7 +44,7 @@ class ClusterMetricsExtension(system: ExtendedActorSystem) extends Extension {
    * Supervision strategy.
    */
   private[metrics] val strategy = system.dynamicAccess.createInstanceFor[SupervisorStrategy](
-    SupervisorStrategyProvider, immutable.Seq(classOf[Config] -> SupervisorStrategyConfiguration))
+    SupervisorStrategyProvider, immutable.Seq(classOf[Config] → SupervisorStrategyConfiguration))
     .getOrElse {
       val log: LoggingAdapter = Logging(system, getClass.getName)
       log.error(s"Configured strategy provider ${SupervisorStrategyProvider} failed to load, using default ${classOf[ClusterMetricsStrategy].getName}.")

@@ -1,17 +1,15 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
 
 import akka.actor.{ Address, AddressFromURIString }
-import java.net.InetSocketAddress
 import org.scalatest.Matchers
 import org.scalatest.WordSpec
 import scala.collection.immutable.SortedSet
 import scala.util.Random
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class MemberOrderingSpec extends WordSpec with Matchers {
   import Member.ordering
   import Member.addressOrdering

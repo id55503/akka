@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.io
 
@@ -14,10 +14,11 @@ import akka.actor._
 /**
  * INTERNAL API
  */
-private[io] class UdpSender(val udp: UdpExt,
-                            channelRegistry: ChannelRegistry,
-                            commander: ActorRef,
-                            options: immutable.Traversable[SocketOption])
+private[io] class UdpSender(
+  val udp:         UdpExt,
+  channelRegistry: ChannelRegistry,
+  commander:       ActorRef,
+  options:         immutable.Traversable[SocketOption])
   extends Actor with ActorLogging with WithUdpSend with RequiresMessageQueue[UnboundedMessageQueueSemantics] {
 
   val channel = {

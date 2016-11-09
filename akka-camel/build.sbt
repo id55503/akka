@@ -1,16 +1,6 @@
-import akka.{ AkkaBuild, Dependencies, Formatting, OSGi, Unidoc }
-import com.typesafe.tools.mima.plugin.MimaKeys
+import akka.{ AkkaBuild, Dependencies, Formatting, OSGi }
 
 AkkaBuild.defaultSettings
-
 Formatting.formatSettings
-
-Unidoc.scaladocSettings
-
-Unidoc.javadocSettings
-
 OSGi.camel
-
 Dependencies.camel
-
-MimaKeys.previousArtifact := akkaPreviousArtifact("akka-camel").value

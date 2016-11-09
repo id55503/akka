@@ -1,21 +1,14 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.typed
 
 import scala.concurrent.duration.Duration
-import scala.collection.immutable
-import scala.collection.immutable.TreeSet
 import scala.collection.immutable.TreeMap
 import akka.util.Helpers
 import akka.{ actor ⇒ untyped }
-import scala.reflect.ClassTag
-import scala.reflect.classTag
-import java.util.concurrent.ConcurrentLinkedQueue
-import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.ExecutionContextExecutor
-import akka.typed.Behavior.stoppedBehavior
 
 /**
  * An Actor is given by the combination of a [[Behavior]] and a context in
@@ -45,9 +38,9 @@ trait ActorContext[T] {
   def self: ActorRef[T]
 
   /**
-   * The [[Props]] from which this Actor was created.
+   * Return the mailbox capacity that was configured by the parent for this actor.
    */
-  def props: Props[T]
+  def mailboxCapacity: Int
 
   /**
    * The [[ActorSystem]] to which this Actor belongs.
@@ -69,23 +62,12 @@ trait ActorContext[T] {
    * Create a child Actor from the given [[Props]] under a randomly chosen name.
    * It is good practice to name Actors wherever practical.
    */
-  def spawnAnonymous[U](props: Props[U]): ActorRef[U]
+  def spawnAnonymous[U](behavior: Behavior[U], deployment: DeploymentConfig = EmptyDeploymentConfig): ActorRef[U]
 
   /**
    * Create a child Actor from the given [[Props]] and with the given name.
    */
-  def spawn[U](props: Props[U], name: String): ActorRef[U]
-
-  /**
-   * Create an untyped child Actor from the given [[akka.actor.Props]] under a randomly chosen name.
-   * It is good practice to name Actors wherever practical.
-   */
-  def actorOf(props: untyped.Props): untyped.ActorRef
-
-  /**
-   * Create an untyped child Actor from the given [[akka.actor.Props]] and with the given name.
-   */
-  def actorOf(props: untyped.Props, name: String): untyped.ActorRef
+  def spawn[U](behavior: Behavior[U], name: String, deployment: DeploymentConfig = EmptyDeploymentConfig): ActorRef[U]
 
   /**
    * Force the child Actor under the given name to terminate after it finishes
@@ -105,32 +87,23 @@ trait ActorContext[T] {
   def watch[U](other: ActorRef[U]): ActorRef[U]
 
   /**
-   * Register for [[Terminated]] notification once the Actor identified by the
-   * given [[akka.actor.ActorRef]] terminates. This notification is also generated when the
-   * [[ActorSystem]] to which the referenced Actor belongs is declared as
-   * failed (e.g. in reaction to being unreachable).
-   */
-  def watch(other: akka.actor.ActorRef): akka.actor.ActorRef
-
-  /**
    * Revoke the registration established by `watch`. A [[Terminated]]
    * notification will not subsequently be received for the referenced Actor.
    */
   def unwatch[U](other: ActorRef[U]): ActorRef[U]
 
   /**
-   * Revoke the registration established by `watch`. A [[Terminated]]
-   * notification will not subsequently be received for the referenced Actor.
-   */
-  def unwatch(other: akka.actor.ActorRef): akka.actor.ActorRef
-
-  /**
-   * Schedule the sending of a [[ReceiveTimeout]] notification in case no other
+   * Schedule the sending of a notification in case no other
    * message is received during the given period of time. The timeout starts anew
    * with each received message. Provide `Duration.Undefined` to switch off this
    * mechanism.
    */
-  def setReceiveTimeout(d: Duration): Unit
+  def setReceiveTimeout(d: FiniteDuration, msg: T): Unit
+
+  /**
+   * Cancel the sending of receive timeout notifications.
+   */
+  def cancelReceiveTimeout(): Unit
 
   /**
    * Schedule the sending of the given message to the given target Actor after
@@ -162,46 +135,38 @@ trait ActorContext[T] {
  * See [[EffectfulActorContext]] for more advanced uses.
  */
 class StubbedActorContext[T](
-  val name: String,
-  override val props: Props[T])(
-    override implicit val system: ActorSystem[Nothing]) extends ActorContext[T] {
+  val name:                     String,
+  override val mailboxCapacity: Int,
+  override val system:          ActorSystem[Nothing]) extends ActorContext[T] {
 
-  val inbox = Inbox.sync[T](name)
+  val inbox = Inbox[T](name)
   override val self = inbox.ref
 
-  private var _children = TreeMap.empty[String, Inbox.SyncInbox[_]]
+  private var _children = TreeMap.empty[String, Inbox[_]]
   private val childName = Iterator from 1 map (Helpers.base64(_))
 
   override def children: Iterable[ActorRef[Nothing]] = _children.values map (_.ref)
   override def child(name: String): Option[ActorRef[Nothing]] = _children get name map (_.ref)
-  override def spawnAnonymous[U](props: Props[U]): ActorRef[U] = {
-    val i = Inbox.sync[U](childName.next())
-    _children += i.ref.untypedRef.path.name -> i
+  override def spawnAnonymous[U](behavior: Behavior[U], deployment: DeploymentConfig = EmptyDeploymentConfig): ActorRef[U] = {
+    val i = Inbox[U](childName.next())
+    _children += i.ref.path.name → i
     i.ref
   }
-  override def spawn[U](props: Props[U], name: String): ActorRef[U] =
+  override def spawn[U](behavior: Behavior[U], name: String, deployment: DeploymentConfig = EmptyDeploymentConfig): ActorRef[U] =
     _children get name match {
       case Some(_) ⇒ throw new untyped.InvalidActorNameException(s"actor name $name is already taken")
       case None ⇒
-        val i = Inbox.sync[U](name)
-        _children += name -> i
+        // FIXME correct child path for the Inbox ref
+        val i = Inbox[U](name)
+        _children += name → i
         i.ref
     }
-  override def actorOf(props: untyped.Props): untyped.ActorRef = {
-    val i = Inbox.sync[Any](childName.next())
-    _children += i.ref.untypedRef.path.name -> i
-    i.ref.untypedRef
-  }
-  override def actorOf(props: untyped.Props, name: String): untyped.ActorRef =
-    _children get name match {
-      case Some(_) ⇒ throw new untyped.InvalidActorNameException(s"actor name $name is already taken")
-      case None ⇒
-        val i = Inbox.sync[Any](name)
-        _children += name -> i
-        i.ref.untypedRef
-    }
+
+  /**
+   * Do not actually stop the child inbox, only simulate the liveness check.
+   * Removal is asynchronous, explicit removeInbox is needed from outside afterwards.
+   */
   override def stop(child: ActorRef[Nothing]): Boolean = {
-    // removal is asynchronous, so don’t do it here; explicit removeInbox needed from outside
     _children.get(child.path.name) match {
       case None        ⇒ false
       case Some(inbox) ⇒ inbox.ref == child
@@ -211,36 +176,33 @@ class StubbedActorContext[T](
   def watch(other: akka.actor.ActorRef): other.type = other
   def unwatch[U](other: ActorRef[U]): ActorRef[U] = other
   def unwatch(other: akka.actor.ActorRef): other.type = other
-  def setReceiveTimeout(d: Duration): Unit = ()
+  def setReceiveTimeout(d: FiniteDuration, msg: T): Unit = ()
+  def cancelReceiveTimeout(): Unit = ()
 
   def schedule[U](delay: FiniteDuration, target: ActorRef[U], msg: U): untyped.Cancellable = new untyped.Cancellable {
     def cancel() = false
     def isCancelled = true
   }
-  implicit def executionContext: ExecutionContextExecutor = system.executionContext
-  def spawnAdapter[U](f: U ⇒ T): ActorRef[U] = ???
 
-  def getInbox[U](name: String): Inbox.SyncInbox[U] = _children(name).asInstanceOf[Inbox.SyncInbox[U]]
-  def removeInbox(name: String): Unit = _children -= name
+  def executionContext: ExecutionContextExecutor = system.executionContext
+
+  def spawnAdapter[U](f: U ⇒ T): ActorRef[U] = spawnAnonymous[Any](Behavior.emptyBehavior)
+
+  /**
+   * Retrieve the named inbox. The passed ActorRef must be one that was returned
+   * by one of the spawn methods earlier.
+   */
+  def getInbox[U](child: ActorRef[U]): Inbox[U] = {
+    val inbox = _children(child.path.name).asInstanceOf[Inbox[U]]
+    if (inbox.ref != child) throw new IllegalArgumentException(s"$child is not a child of $this")
+    inbox
+  }
+
+  /**
+   * Remove the given inbox from the list of children, for example after
+   * having simulated its termination.
+   */
+  def removeInbox(child: ActorRef[Nothing]): Unit = _children -= child.path.name
+
+  override def toString: String = s"Inbox($self)"
 }
-
-/*
- * TODO
- * 
- * Currently running a behavior requires that the context stays the same, since
- * the behavior may well close over it and thus a change might not be effective
- * at all. Another issue is that there is genuine state within the context that
- * is coupled to the behavior’s state: if child actors were created then
- * migrating a behavior into a new context will not work.
- * 
- * This note is about remembering the reasons behind this restriction and
- * proposes an ActorContextProxy as a (broken) half-solution. Another avenue
- * by which a solution may be explored is for Pure behaviors in that they
- * may be forced to never remember anything that is immobile.
- */
-//class MobileActorContext[T](_name: String, _props: Props[T], _system: ActorSystem[Nothing])
-//  extends EffectfulActorContext[T](_name, _props, _system) {
-//
-//}
-//
-//class ActorContextProxy[T](var d: ActorContext[T]) extends ActorContext[T]

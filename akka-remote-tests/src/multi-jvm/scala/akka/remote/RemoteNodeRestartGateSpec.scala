@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2014 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -46,8 +46,7 @@ class RemoteNodeRestartGateSpecMultiJvmNode1 extends RemoteNodeRestartGateSpec
 class RemoteNodeRestartGateSpecMultiJvmNode2 extends RemoteNodeRestartGateSpec
 
 abstract class RemoteNodeRestartGateSpec
-  extends MultiNodeSpec(RemoteNodeRestartGateSpec)
-  with STMultiNodeSpec with ImplicitSender {
+  extends RemotingMultiNodeSpec(RemoteNodeRestartGateSpec) {
 
   import RemoteNodeRestartGateSpec._
 

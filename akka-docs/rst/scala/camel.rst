@@ -277,7 +277,7 @@ messages to endpoints.
 
 .. includecode:: code/docs/camel/Producers.scala#ProducerTemplate
 
-For initiating a a two-way message exchange, one of the
+For initiating a two-way message exchange, one of the
 ``ProducerTemplate.request*`` methods must be used.
 
 .. includecode:: code/docs/camel/Producers.scala#RequestProducerTemplate
@@ -415,7 +415,7 @@ Here's an actor endpoint URI example containing an actor path::
    akka://some-system/user/myconsumer?autoAck=false&replyTimeout=100+millis
 
 In the following example, a custom route to an actor is created, using the
-actor's path. the akka camel package contains an implicit ``toActorRouteDefinition`` that allows for a route to
+actor's path. the Akka camel package contains an implicit ``toActorRouteDefinition`` that allows for a route to
 reference an ``ActorRef`` directly as shown in the below example, The route starts from a `Jetty`_ endpoint and
 ends at the target actor.
 
@@ -469,8 +469,8 @@ __ https://svn.apache.org/repos/asf/camel/tags/camel-2.8.0/camel-core/src/main/j
 Examples
 ========
 
-The `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_
-tutorial named `Akka Camel Samples with Scala <http://www.typesafe.com/activator/template/akka-sample-camel-scala>`_
+The `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_
+tutorial named `Akka Camel Samples with Scala <http://www.lightbend.com/activator/template/akka-sample-camel-scala>`_
 contains 3 samples:
 
  * Asynchronous routing and transformation - This example demonstrates how to implement consumer and 

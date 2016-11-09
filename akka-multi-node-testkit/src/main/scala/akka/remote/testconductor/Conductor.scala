@@ -1,32 +1,27 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.testconductor
 
 import language.postfixOps
-import akka.actor.{ Actor, ActorRef, ActorSystem, LoggingFSM, Props, NoSerializationVerificationNeeded }
-import RemoteConnection.getAddrString
-import TestConductorProtocol._
-import org.jboss.netty.channel.{ Channel, SimpleChannelUpstreamHandler, ChannelHandlerContext, ChannelStateEvent, MessageEvent }
-import com.typesafe.config.ConfigFactory
-import scala.concurrent.duration._
-import akka.pattern.ask
-import scala.concurrent.Await
-import akka.event.{ LoggingAdapter, Logging }
-import scala.util.control.NoStackTrace
-import akka.event.LoggingReceive
-import java.net.InetSocketAddress
-import scala.concurrent.Future
-import akka.actor.{ OneForOneStrategy, SupervisorStrategy, Status, Address, PoisonPill }
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit.MILLISECONDS
-import akka.util.{ Timeout }
-import scala.reflect.classTag
-import akka.ConfigurationException
+
+import akka.actor.{ Actor, ActorRef, Address, DeadLetterSuppression, Deploy, FSM, LoggingFSM, NoSerializationVerificationNeeded, OneForOneStrategy, Props, Status, SupervisorStrategy }
 import akka.AkkaException
+import akka.ConfigurationException
+import akka.event.LoggingReceive
+import akka.event.{ Logging, LoggingAdapter }
+import akka.pattern.ask
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
-import akka.actor.Deploy
-import akka.actor.DeadLetterSuppression
+import akka.util.Timeout
+import java.net.InetSocketAddress
+import java.util.concurrent.ConcurrentHashMap
+import org.jboss.netty.channel.{ Channel, ChannelHandlerContext, ChannelStateEvent, MessageEvent, SimpleChannelUpstreamHandler }
+import RemoteConnection.getAddrString
+import scala.concurrent.Await
+import scala.concurrent.duration._
+import scala.concurrent.Future
+import scala.reflect.classTag
+import scala.util.control.NoStackTrace
 
 /**
  * The conductor is the one orchestrating the test: it governs the
@@ -127,10 +122,17 @@ trait Conductor { this: TestConductorExt ⇒
   def blackhole(node: RoleName, target: RoleName, direction: Direction): Future[Done] =
     throttle(node, target, direction, 0f)
 
-  private def requireTestConductorTranport(): Unit =
-    if (!transport.defaultAddress.protocol.contains(".trttl.gremlin."))
-      throw new ConfigurationException("To use this feature you must activate the failure injector adapters " +
-        "(trttl, gremlin) by specifying `testTransport(on = true)` in your MultiNodeConfig.")
+  private def requireTestConductorTranport(): Unit = {
+    if (transport.provider.remoteSettings.Artery.Enabled) {
+      if (!transport.provider.remoteSettings.Artery.Advanced.TestMode)
+        throw new ConfigurationException("To use this feature you must activate the test mode " +
+          "by specifying `testTransport(on = true)` in your MultiNodeConfig.")
+    } else {
+      if (!transport.defaultAddress.protocol.contains(".trttl.gremlin."))
+        throw new ConfigurationException("To use this feature you must activate the failure injector adapters " +
+          "(trttl, gremlin) by specifying `testTransport(on = true)` in your MultiNodeConfig.")
+    }
+  }
 
   /**
    * Switch the Netty pipeline of the remote support into pass through mode for
@@ -302,7 +304,6 @@ private[akka] object ServerFSM {
  */
 private[akka] class ServerFSM(val controller: ActorRef, val channel: Channel) extends Actor with LoggingFSM[ServerFSM.State, Option[ActorRef]] {
   import ServerFSM._
-  import akka.actor.FSM._
   import Controller._
 
   var roleName: RoleName = null
@@ -434,7 +435,7 @@ private[akka] class Controller(private var initialParticipants: Int, controllerP
         }
         fsm ! ToClient(BarrierResult("initial startup", false))
       } else {
-        nodes += name -> c
+        nodes += name → c
         if (initialParticipants <= 0) fsm ! ToClient(Done)
         else if (nodes.size == initialParticipants) {
           for (NodeInfo(_, _, client) ← nodes.values) client ! ToClient(Done)
@@ -454,7 +455,7 @@ private[akka] class Controller(private var initialParticipants: Int, controllerP
         case _: FailBarrier  ⇒ barrier forward op
         case GetAddress(node) ⇒
           if (nodes contains node) sender() ! ToClient(AddressReply(node, nodes(node).addr))
-          else addrInterest += node -> ((addrInterest get node getOrElse Set()) + sender())
+          else addrInterest += node → ((addrInterest get node getOrElse Set()) + sender())
         case _: Done ⇒ //FIXME what should happen?
       }
     case op: CommandOp ⇒
@@ -525,9 +526,8 @@ private[akka] object BarrierCoordinator {
  */
 private[akka] class BarrierCoordinator extends Actor with LoggingFSM[BarrierCoordinator.State, BarrierCoordinator.Data] {
   import BarrierCoordinator._
-  import akka.actor.FSM._
   import Controller._
-  import akka.util.{ Timeout ⇒ auTimeout }
+  import FSM.`→`
 
   // this shall be set to true if all subsequent barriers shall fail
   var failed = false
@@ -572,8 +572,8 @@ private[akka] class BarrierCoordinator extends Actor with LoggingFSM[BarrierCoor
   }
 
   onTransition {
-    case Idle -> Waiting ⇒ setTimer("Timeout", StateTimeout, nextStateData.deadline.timeLeft, false)
-    case Waiting -> Idle ⇒ cancelTimer("Timeout")
+    case Idle → Waiting ⇒ setTimer("Timeout", StateTimeout, nextStateData.deadline.timeLeft, false)
+    case Waiting → Idle ⇒ cancelTimer("Timeout")
   }
 
   when(Waiting) {

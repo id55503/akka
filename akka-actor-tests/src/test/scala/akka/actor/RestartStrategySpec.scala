@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -7,18 +7,15 @@ package akka.actor
 import language.postfixOps
 
 import java.lang.Thread.sleep
-import org.scalatest.BeforeAndAfterAll
 import scala.concurrent.Await
 import akka.testkit.TestEvent._
 import akka.testkit.EventFilter
-import java.util.concurrent.{ TimeUnit, CountDownLatch }
 import akka.testkit.AkkaSpec
 import akka.testkit.DefaultTimeout
 import akka.testkit.TestLatch
 import scala.concurrent.duration._
 import akka.pattern.ask
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class RestartStrategySpec extends AkkaSpec("akka.actor.serialize-messages = off") with DefaultTimeout {
 
   override def atStartup {

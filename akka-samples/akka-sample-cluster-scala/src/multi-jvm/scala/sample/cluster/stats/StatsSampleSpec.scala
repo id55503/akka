@@ -24,7 +24,7 @@ object StatsSampleSpecConfig extends MultiNodeConfig {
   def nodeList = Seq(first, second, third)
 
   // Extract individual sigar library for every node.
-  nodeList foreach { role ⇒
+  nodeList foreach { role =>
     nodeConfig(role) {
       ConfigFactory.parseString(s"""
       # Disable legacy metrics in akka-cluster.
@@ -40,14 +40,13 @@ object StatsSampleSpecConfig extends MultiNodeConfig {
   // this configuration will be used for all nodes
   // note that no fixed host names and ports are used
   commonConfig(ConfigFactory.parseString("""
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = cluster
     akka.remote.log-remote-lifecycle-events = off
     akka.cluster.roles = [compute]
     #//#router-lookup-config
     akka.actor.deployment {
       /statsService/workerRouter {
           router = consistent-hashing-group
-          nr-of-instances = 100
           routees.paths = ["/user/statsWorker"]
           cluster {
             enabled = on

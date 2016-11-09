@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.japi.pf;
@@ -94,8 +94,8 @@ public final class PFBuilder<I, R> extends AbstractPFBuilder<I, R> {
    * @param apply an action to apply to the argument
    * @return a builder with the case statement added
    */
-  public PFBuilder<I, R> matchAny(final FI.Apply<Object, R> apply) {
-    addStatement(new CaseStatement<I, Object, R>(
+  public PFBuilder<I, R> matchAny(final FI.Apply<I, R> apply) {
+    addStatement(new CaseStatement<I, I, R>(
       new FI.Predicate() {
         @Override
         public boolean defined(Object o) {

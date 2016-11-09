@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.util
@@ -239,7 +239,7 @@ class BoundedBlockingQueue[E <: AnyRef](
           elements(last).asInstanceOf[E]
         }
 
-        def remove() {
+        override def remove() {
           if (last < 0) throw new IllegalStateException
           val target = elements(last)
           last = -1 //To avoid 2 subsequent removes without a next in between

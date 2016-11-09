@@ -1,17 +1,29 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
-import language.postfixOps
-
 import akka.testkit._
+
 import scala.concurrent.duration._
+import scala.language.postfixOps
 
 object FSMTransitionSpec {
+  import FSM.`→`
 
   class Supervisor extends Actor {
     def receive = { case _ ⇒ }
+  }
+
+  class SendAnyTransitionFSM(target: ActorRef) extends Actor with FSM[Int, Int] {
+    startWith(0, 0)
+    when(0) {
+      case Event("stay", _) ⇒ stay()
+      case Event(_, _)      ⇒ goto(0)
+    }
+    onTransition { case from → to ⇒ target ! (from → to) }
+
+    initialize()
   }
 
   class MyFSM(target: ActorRef) extends Actor with FSM[Int, Unit] {
@@ -39,8 +51,8 @@ object FSMTransitionSpec {
       case _ ⇒ goto(1)
     }
     onTransition {
-      case 0 -> 1 ⇒ target ! ((stateData, nextStateData))
-      case 1 -> 1 ⇒ target ! ((stateData, nextStateData))
+      case 0 → 1 ⇒ target ! ((stateData, nextStateData))
+      case 1 → 1 ⇒ target ! ((stateData, nextStateData))
     }
   }
 
@@ -50,15 +62,24 @@ object FSMTransitionSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class FSMTransitionSpec extends AkkaSpec with ImplicitSender {
 
   import FSMTransitionSpec._
+  import FSM.`→`
 
   "A FSM transition notifier" must {
 
+    "not trigger onTransition for stay" in {
+      val fsm = system.actorOf(Props(new SendAnyTransitionFSM(testActor)))
+      expectMsg(0 → 0) // caused by initialize(), OK.
+      fsm ! "stay" // no transition event
+      expectNoMsg(500.millis)
+      fsm ! "goto" // goto(current state)
+      expectMsg(0 → 0)
+    }
+
     "notify listeners" in {
-      import FSM.{ SubscribeTransitionCallBack, CurrentState, Transition }
+      import FSM.{ CurrentState, SubscribeTransitionCallBack, Transition }
 
       val fsm = system.actorOf(Props(new MyFSM(testActor)))
       within(1 second) {
@@ -113,7 +134,6 @@ class FSMTransitionSpec extends AkkaSpec with ImplicitSender {
     }
 
     "not trigger transition event on stay()" in {
-      import FSM.Transition
       val forward = system.actorOf(Props(new Forwarder(testActor)))
       val fsm = system.actorOf(Props(new OtherFSM(testActor)))
 
@@ -132,7 +152,7 @@ class FSMTransitionSpec extends AkkaSpec with ImplicitSender {
           case Event("switch", _) ⇒ goto(1) using sender()
         }
         onTransition {
-          case x -> y ⇒ nextStateData ! (x -> y)
+          case x → y ⇒ nextStateData ! (x → y)
         }
         when(1) {
           case Event("test", _) ⇒

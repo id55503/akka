@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.typed
 
@@ -44,7 +44,7 @@ object ScalaDSL {
     private def postProcess(ctx: ActorContext[U], behv: Behavior[T]): Behavior[U] =
       if (isUnhandled(behv)) Unhandled
       else if (isAlive(behv)) {
-        val next = canonicalize(ctx.asInstanceOf[ActorContext[T]], behv, behavior)
+        val next = canonicalize(behv, behavior)
         if (next eq behavior) Same else Widened(next, matcher)
       } else Stopped
 
@@ -57,6 +57,22 @@ object ScalaDSL {
       else Unhandled
 
     override def toString: String = s"${behavior.toString}.widen(${LineNumbers(matcher)})"
+  }
+
+  /**
+   * Wrap a behavior factory so that it runs upon PreStart, i.e. behavior creation
+   * is deferred to the child actor instead of running within the parent.
+   */
+  final case class Deferred[T](factory: () ⇒ Behavior[T]) extends Behavior[T] {
+    override def management(ctx: ActorContext[T], msg: Signal): Behavior[T] = {
+      if (msg != PreStart) throw new IllegalStateException(s"Deferred must receive PreStart as first message (got $msg)")
+      Behavior.preStart(factory(), ctx)
+    }
+
+    override def message(ctx: ActorContext[T], msg: T): Behavior[T] =
+      throw new IllegalStateException(s"Deferred must receive PreStart as first message (got $msg)")
+
+    override def toString: String = s"Deferred(${LineNumbers(factory)})"
   }
 
   /**
@@ -134,14 +150,13 @@ object ScalaDSL {
   final case class Full[T](behavior: PartialFunction[MessageOrSignal[T], Behavior[T]]) extends Behavior[T] {
     override def management(ctx: ActorContext[T], msg: Signal): Behavior[T] = {
       lazy val fallback: (MessageOrSignal[T]) ⇒ Behavior[T] = {
-        case Sig(context, PreRestart(_)) ⇒
+        case Sig(context, PreRestart) ⇒
           context.children foreach { child ⇒
-            context.unwatch(child.untypedRef)
+            context.unwatch[Nothing](child)
             context.stop(child)
           }
           behavior.applyOrElse(Sig(context, PostStop), fallback)
-        case Sig(context, PostRestart(_)) ⇒ behavior.applyOrElse(Sig(context, PreStart), fallback)
-        case _                            ⇒ Unhandled
+        case _ ⇒ Unhandled
       }
       behavior.applyOrElse(Sig(ctx, msg), fallback)
     }
@@ -185,7 +200,7 @@ object ScalaDSL {
   /**
    * This type of Behavior is created from a partial function from the declared
    * message type to the next behavior, flagging all unmatched messages as
-   * [[Unhandled]]. All system signals are
+   * [[#Unhandled]]. All system signals are
    * ignored by this behavior, which implies that a failure of a child actor
    * will be escalated unconditionally.
    *
@@ -253,27 +268,40 @@ object ScalaDSL {
    * sides of [[And]] and [[Or]] combinators.
    */
   final case class SynchronousSelf[T](f: ActorRef[T] ⇒ Behavior[T]) extends Behavior[T] {
-    private val inbox = Inbox.sync[T]("syncbox")
-    private var _behavior = f(inbox.ref)
-    private def behavior = _behavior
-    private def setBehavior(ctx: ActorContext[T], b: Behavior[T]): Unit =
-      _behavior = canonicalize(ctx, b, _behavior)
 
-    // FIXME should we protect against infinite loops?
-    @tailrec private def run(ctx: ActorContext[T], next: Behavior[T]): Behavior[T] = {
-      setBehavior(ctx, next)
-      if (inbox.hasMessages) run(ctx, behavior.message(ctx, inbox.receiveMsg()))
-      else if (isUnhandled(next)) Unhandled
-      else if (isAlive(next)) this
-      else Stopped
+    private class B extends Behavior[T] {
+      private val inbox = Inbox[T]("synchronousSelf")
+      private var _behavior = Behavior.validateAsInitial(f(inbox.ref))
+      private def behavior = _behavior
+      private def setBehavior(ctx: ActorContext[T], b: Behavior[T]): Unit =
+        _behavior = canonicalize(b, _behavior)
+
+      // FIXME should we protect against infinite loops?
+      @tailrec private def run(ctx: ActorContext[T], next: Behavior[T]): Behavior[T] = {
+        setBehavior(ctx, next)
+        if (inbox.hasMessages) run(ctx, behavior.message(ctx, inbox.receiveMsg()))
+        else if (isUnhandled(next)) Unhandled
+        else if (isAlive(next)) this
+        else Stopped
+      }
+
+      override def management(ctx: ActorContext[T], msg: Signal): Behavior[T] =
+        run(ctx, behavior.management(ctx, msg))
+      override def message(ctx: ActorContext[T], msg: T): Behavior[T] =
+        run(ctx, behavior.message(ctx, msg))
+
+      override def toString: String = s"SynchronousSelf($behavior)"
     }
 
-    override def management(ctx: ActorContext[T], msg: Signal): Behavior[T] =
-      run(ctx, behavior.management(ctx, msg))
-    override def message(ctx: ActorContext[T], msg: T): Behavior[T] =
-      run(ctx, behavior.message(ctx, msg))
+    override def management(ctx: ActorContext[T], msg: Signal): Behavior[T] = {
+      if (msg != PreStart) throw new IllegalStateException(s"SynchronousSelf must receive PreStart as first message (got $msg)")
+      Behavior.preStart(new B(), ctx)
+    }
 
-    override def toString: String = s"SynchronousSelf($behavior)"
+    override def message(ctx: ActorContext[T], msg: T): Behavior[T] =
+      throw new IllegalStateException(s"SynchronousSelf must receive PreStart as first message (got $msg)")
+
+    override def toString: String = s"SynchronousSelf(${LineNumbers(f)})"
   }
 
   /**
@@ -290,8 +318,8 @@ object ScalaDSL {
       val r = right.management(ctx, msg)
       if (isUnhandled(l) && isUnhandled(r)) Unhandled
       else {
-        val nextLeft = canonicalize(ctx, l, left)
-        val nextRight = canonicalize(ctx, r, right)
+        val nextLeft = canonicalize(l, left)
+        val nextRight = canonicalize(r, right)
         val leftAlive = isAlive(nextLeft)
         val rightAlive = isAlive(nextRight)
 
@@ -307,8 +335,8 @@ object ScalaDSL {
       val r = right.message(ctx, msg)
       if (isUnhandled(l) && isUnhandled(r)) Unhandled
       else {
-        val nextLeft = canonicalize(ctx, l, left)
-        val nextRight = canonicalize(ctx, r, right)
+        val nextLeft = canonicalize(l, left)
+        val nextRight = canonicalize(r, right)
         val leftAlive = isAlive(nextLeft)
         val rightAlive = isAlive(nextRight)
 
@@ -324,7 +352,7 @@ object ScalaDSL {
    * A behavior combinator that feeds incoming messages and signals either into
    * the left or right sub-behavior and allows them to evolve independently of
    * each other. The message or signal is passed first into the left sub-behavior
-   * and only if that results in [[Unhandled]] is it passed to the right
+   * and only if that results in [[#Unhandled]] is it passed to the right
    * sub-behavior. When one of the sub-behaviors terminates the other takes over
    * exclusively. When both sub-behaviors respond to a [[Failed]] signal, the
    * response with the higher precedence is chosen (see [[Failed$]]).
@@ -337,11 +365,11 @@ object ScalaDSL {
           val r = right.management(ctx, msg)
           if (isUnhandled(r)) Unhandled
           else {
-            val nr = canonicalize(ctx, r, right)
+            val nr = canonicalize(r, right)
             if (isAlive(nr)) Or(left, nr) else left
           }
         case nl ⇒
-          val next = canonicalize(ctx, nl, left)
+          val next = canonicalize(nl, left)
           if (isAlive(next)) Or(next, right) else right
       }
 
@@ -351,11 +379,11 @@ object ScalaDSL {
           val r = right.message(ctx, msg)
           if (isUnhandled(r)) Unhandled
           else {
-            val nr = canonicalize(ctx, r, right)
+            val nr = canonicalize(r, right)
             if (isAlive(nr)) Or(left, nr) else left
           }
         case nl ⇒
-          val next = canonicalize(ctx, nl, left)
+          val next = canonicalize(nl, left)
           if (isAlive(next)) Or(next, right) else right
       }
   }
@@ -392,12 +420,8 @@ object ScalaDSL {
    */
   def SelfAware[T](behavior: ActorRef[T] ⇒ Behavior[T]): Behavior[T] =
     FullTotal {
-      case Sig(ctx, signal) ⇒
-        val behv = behavior(ctx.self)
-        canonicalize(ctx, behv.management(ctx, signal), behv)
-      case Msg(ctx, msg) ⇒
-        val behv = behavior(ctx.self)
-        canonicalize(ctx, behv.message(ctx, msg), behv)
+      case Sig(ctx, PreStart) ⇒ Behavior.preStart(behavior(ctx.self), ctx)
+      case msg                ⇒ throw new IllegalStateException(s"SelfAware must receive PreStart as first message (got $msg)")
     }
 
   /**
@@ -416,12 +440,8 @@ object ScalaDSL {
    */
   def ContextAware[T](behavior: ActorContext[T] ⇒ Behavior[T]): Behavior[T] =
     FullTotal {
-      case Sig(ctx, signal) ⇒
-        val behv = behavior(ctx)
-        canonicalize(ctx, behv.management(ctx, signal), behv)
-      case Msg(ctx, msg) ⇒
-        val behv = behavior(ctx)
-        canonicalize(ctx, behv.message(ctx, msg), behv)
+      case Sig(ctx, PreStart) ⇒ Behavior.preStart(behavior(ctx), ctx)
+      case msg                ⇒ throw new IllegalStateException(s"ContextAware must receive PreStart as first message (got $msg)")
     }
 
   /**

@@ -1,14 +1,10 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
 
-import akka.AkkaException
-
-import System.{ currentTimeMillis ⇒ newTimestamp }
 import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicLong
 import scala.collection.immutable.TreeMap
 import scala.annotation.tailrec
 
@@ -186,6 +182,12 @@ final case class VectorClock(
     }
     VectorClock(mergedVersions)
   }
+
+  def prune(removedNode: Node): VectorClock =
+    if (versions.contains(removedNode))
+      copy(versions = versions - removedNode)
+    else
+      this
 
   override def toString = versions.map { case ((n, t)) ⇒ n + " -> " + t }.mkString("VectorClock(", ", ", ")")
 }

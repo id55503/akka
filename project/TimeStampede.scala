@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka
 
@@ -8,8 +8,7 @@ import sbt.Keys._
 
 object TimeStampede extends AutoPlugin {
 
-  override def requires = RootSettings
-  override def trigger = allRequirements
+  override def trigger = noTrigger
 
   override lazy val projectSettings = Seq(
     commands += stampVersion

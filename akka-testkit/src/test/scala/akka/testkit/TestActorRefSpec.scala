@@ -1,16 +1,14 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit
 
-import language.{ postfixOps, reflectiveCalls }
-import org.scalatest.Matchers
-import org.scalatest.{ BeforeAndAfterEach, WordSpec }
+import language.{ postfixOps }
+import org.scalatest.{ BeforeAndAfterEach }
 import akka.actor._
 import akka.event.Logging.Warning
-import scala.concurrent.{ Future, Promise, Await }
+import scala.concurrent.{ Promise, Await }
 import scala.concurrent.duration._
-import akka.actor.ActorSystem
 import akka.pattern.ask
 import akka.dispatch.Dispatcher
 
@@ -62,6 +60,9 @@ object TestActorRefSpec {
       case replyTo: Promise[_] ⇒ replyTo.asInstanceOf[Promise[Any]].success("complexReply")
       case replyTo: ActorRef   ⇒ replyTo ! "complexReply"
     }
+
+    val supervisor = context.parent
+    val name = context.self.path.name
   }
 
   class SenderActor(replyActor: ActorRef) extends TActor {
@@ -104,7 +105,6 @@ object TestActorRefSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class TestActorRefSpec extends AkkaSpec("disp1.type=Dispatcher") with BeforeAndAfterEach with DefaultTimeout {
 
   import TestActorRefSpec._
@@ -265,6 +265,83 @@ class TestActorRefSpec extends AkkaSpec("disp1.type=Dispatcher") with BeforeAndA
       ref.receive("work", testActor)
       ref.isTerminated should ===(true)
       expectMsg("workDone")
+    }
+
+    "not throw an exception when parent is passed in the apply" in {
+      EventFilter[RuntimeException](occurrences = 1, message = "expected") intercept {
+        val parent = TestProbe()
+        val child = TestActorRef(Props(new Actor {
+          def receive: Receive = {
+            case 1 ⇒ throw new RuntimeException("expected")
+            case x ⇒ sender() ! x
+          }
+        }), parent.ref, "Child")
+
+        child ! 1
+      }
+    }
+    "not throw an exception when child is created through childActorOf" in {
+      EventFilter[RuntimeException](occurrences = 1, message = "expected") intercept {
+        val parent = TestProbe()
+        val child = parent.childActorOf(Props(new Actor {
+          def receive: Receive = {
+            case 1 ⇒ throw new RuntimeException("expected")
+            case x ⇒ sender() ! x
+          }
+        }), "Child")
+
+        child ! 1
+      }
+    }
+
+  }
+
+  "A TestActorRef Companion Object" must {
+
+    "allow creation of a TestActorRef with a default supervisor" in {
+      val ref = TestActorRef[WorkerActor]
+      ref.underlyingActor.supervisor should be(system.asInstanceOf[ActorSystemImpl].guardian)
+    }
+
+    "allow creation of a TestActorRef with a default supervisor and specified name" in {
+      val ref = TestActorRef[WorkerActor]("specificActor")
+      ref.underlyingActor.name should be("specificActor")
+    }
+
+    "allow creation of a TestActorRef with a specified supervisor" in {
+      val parent = TestActorRef[ReplyActor]
+      val ref = TestActorRef[WorkerActor](parent)
+      ref.underlyingActor.supervisor should be(parent)
+    }
+
+    "allow creation of a TestActorRef with a specified supervisor and specified name" in {
+      val parent = TestActorRef[ReplyActor]
+      val ref = TestActorRef[WorkerActor](parent, "specificSupervisedActor")
+      ref.underlyingActor.name should be("specificSupervisedActor")
+      ref.underlyingActor.supervisor should be(parent)
+    }
+
+    "allow creation of a TestActorRef with a default supervisor with Props" in {
+      val ref = TestActorRef[WorkerActor](Props[WorkerActor])
+      ref.underlyingActor.supervisor should be(system.asInstanceOf[ActorSystemImpl].guardian)
+    }
+
+    "allow creation of a TestActorRef with a default supervisor and specified name with Props" in {
+      val ref = TestActorRef[WorkerActor](Props[WorkerActor], "specificPropsActor")
+      ref.underlyingActor.name should be("specificPropsActor")
+    }
+
+    "allow creation of a TestActorRef with a specified supervisor with Props" in {
+      val parent = TestActorRef[ReplyActor]
+      val ref = TestActorRef[WorkerActor](Props[WorkerActor], parent)
+      ref.underlyingActor.supervisor should be(parent)
+    }
+
+    "allow creation of a TestActorRef with a specified supervisor and specified name with Props" in {
+      val parent = TestActorRef[ReplyActor]
+      val ref = TestActorRef[WorkerActor](Props[WorkerActor], parent, "specificSupervisedPropsActor")
+      ref.underlyingActor.name should be("specificSupervisedPropsActor")
+      ref.underlyingActor.supervisor should be(parent)
     }
 
   }

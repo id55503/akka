@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.io
@@ -7,7 +7,6 @@ package akka.io
 import akka.actor.{ ActorRef, PoisonPill }
 import akka.io.Tcp._
 import akka.testkit.{ TestProbe, AkkaSpec }
-import akka.testkit.SocketUtil._
 import akka.util.ByteString
 import java.io.IOException
 import java.net.{ ServerSocket, InetSocketAddress }
@@ -186,11 +185,11 @@ class TcpIntegrationSpec extends AkkaSpec("""
   }
 
   def chitchat(
-    clientHandler: TestProbe,
+    clientHandler:    TestProbe,
     clientConnection: ActorRef,
-    serverHandler: TestProbe,
+    serverHandler:    TestProbe,
     serverConnection: ActorRef,
-    rounds: Int = 100) = {
+    rounds:           Int       = 100) = {
 
     val testData = ByteString(0)
     (1 to rounds) foreach { _ ⇒

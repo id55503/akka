@@ -1,15 +1,16 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.io
 
 import java.io.{ File, IOException }
-import java.net.{ ServerSocket, URLClassLoader, InetSocketAddress }
+import java.net.{ InetSocketAddress, ServerSocket, URLClassLoader }
 import java.nio.ByteBuffer
 import java.nio.channels._
 import java.nio.channels.spi.SelectorProvider
 import java.nio.channels.SelectionKey._
+
 import com.typesafe.config.ConfigFactory
 
 import scala.annotation.tailrec
@@ -21,8 +22,8 @@ import akka.io.Tcp._
 import akka.io.SelectionHandler._
 import akka.io.Inet.SocketOption
 import akka.actor._
-import akka.testkit.{ AkkaSpec, EventFilter, TestActorRef, TestProbe }
-import akka.util.{ Helpers, ByteString }
+import akka.testkit.{ AkkaSpec, EventFilter, SocketUtil, TestActorRef, TestProbe }
+import akka.util.{ ByteString, Helpers }
 import akka.testkit.SocketUtil._
 import java.util.Random
 
@@ -360,11 +361,10 @@ class TcpConnectionSpec extends AkkaSpec("""
 
     "respect pull mode" in new EstablishedConnectionTest(pullMode = true) {
       // override config to decrease default buffer size
-      val config =
-        ConfigFactory.load(
-          ConfigFactory.parseString("akka.io.tcp.direct-buffer-size = 1k")
-            .withFallback(AkkaSpec.testConf))
-      override implicit def system: ActorSystem = ActorSystem("respectPullModeTest", config)
+      def config =
+        ConfigFactory.parseString("akka.io.tcp.direct-buffer-size = 1k")
+          .withFallback(AkkaSpec.testConf)
+      override implicit lazy val system: ActorSystem = ActorSystem("respectPullModeTest", config)
 
       try run {
         val maxBufferSize = 1 * 1024
@@ -402,7 +402,7 @@ class TcpConnectionSpec extends AkkaSpec("""
 
         connectionHandler.expectMsgType[Received].data.decodeString("ASCII") should ===(vs)
       }
-      finally system.shutdown()
+      finally shutdown(system)
     }
 
     "close the connection and reply with `Closed` upon reception of a `Close` command" in
@@ -450,10 +450,10 @@ class TcpConnectionSpec extends AkkaSpec("""
           assertThisConnectionActorTerminated()
 
           val buffer = ByteBuffer.allocate(1)
-          val thrown = evaluating {
+          val thrown = the[IOException] thrownBy {
             windowsWorkaroundToDetectAbort()
             serverSideChannel.read(buffer)
-          } should produce[IOException]
+          }
           thrown.getMessage should ===(ConnectionResetByPeerMessage)
         }
       }
@@ -827,7 +827,8 @@ class TcpConnectionSpec extends AkkaSpec("""
     "report abort before handler is registered (reproducer from #15033)" in {
       // This test needs the OP_CONNECT workaround on Windows, see original report #15033 and parent ticket #15766
 
-      val bindAddress = new InetSocketAddress(23402)
+      val port = SocketUtil.temporaryServerAddress().getPort
+      val bindAddress = new InetSocketAddress(port)
       val serverSocket = new ServerSocket(bindAddress.getPort, 100, bindAddress.getAddress)
       val connectionProbe = TestProbe()
 
@@ -887,10 +888,11 @@ class TcpConnectionSpec extends AkkaSpec("""
 
     def setServerSocketOptions() = ()
 
-    def createConnectionActor(serverAddress: InetSocketAddress = serverAddress,
-                              options: immutable.Seq[SocketOption] = Nil,
-                              timeout: Option[FiniteDuration] = None,
-                              pullMode: Boolean = false): TestActorRef[TcpOutgoingConnection] = {
+    def createConnectionActor(
+      serverAddress: InetSocketAddress           = serverAddress,
+      options:       immutable.Seq[SocketOption] = Nil,
+      timeout:       Option[FiniteDuration]      = None,
+      pullMode:      Boolean                     = false): TestActorRef[TcpOutgoingConnection] = {
       val ref = createConnectionActorWithoutRegistration(serverAddress, options, timeout, pullMode)
       ref ! newChannelRegistration
       ref
@@ -902,10 +904,11 @@ class TcpConnectionSpec extends AkkaSpec("""
         def disableInterest(op: Int): Unit = interestCallReceiver.ref ! -op
       }
 
-    def createConnectionActorWithoutRegistration(serverAddress: InetSocketAddress = serverAddress,
-                                                 options: immutable.Seq[SocketOption] = Nil,
-                                                 timeout: Option[FiniteDuration] = None,
-                                                 pullMode: Boolean = false): TestActorRef[TcpOutgoingConnection] =
+    def createConnectionActorWithoutRegistration(
+      serverAddress: InetSocketAddress           = serverAddress,
+      options:       immutable.Seq[SocketOption] = Nil,
+      timeout:       Option[FiniteDuration]      = None,
+      pullMode:      Boolean                     = false): TestActorRef[TcpOutgoingConnection] =
       TestActorRef(
         new TcpOutgoingConnection(Tcp(system), this, userHandler.ref,
           Connect(serverAddress, options = options, timeout = timeout, pullMode = pullMode)) {
@@ -932,8 +935,8 @@ class TcpConnectionSpec extends AkkaSpec("""
 
   abstract class EstablishedConnectionTest(
     keepOpenOnPeerClosed: Boolean = false,
-    useResumeWriting: Boolean = true,
-    pullMode: Boolean = false)
+    useResumeWriting:     Boolean = true,
+    pullMode:             Boolean = false)
     extends UnacceptedConnectionTest(pullMode) {
 
     // lazy init since potential exceptions should not be triggered in the constructor but during execution of `run`
@@ -1075,7 +1078,7 @@ class TcpConnectionSpec extends AkkaSpec("""
       }
 
     val interestsNames =
-      Seq(OP_ACCEPT -> "accepting", OP_CONNECT -> "connecting", OP_READ -> "reading", OP_WRITE -> "writing")
+      Seq(OP_ACCEPT → "accepting", OP_CONNECT → "connecting", OP_READ → "reading", OP_WRITE → "writing")
     def interestsDesc(interests: Int): String =
       interestsNames.filter(i ⇒ (i._1 & interests) != 0).map(_._2).mkString(", ")
 

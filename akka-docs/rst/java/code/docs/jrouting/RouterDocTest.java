@@ -1,10 +1,11 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.jrouting;
 
 import akka.testkit.AkkaJUnitActorSystemResource;
 
+import docs.AbstractJavaTest;
 import org.junit.ClassRule;
 import org.junit.Test;
 
@@ -66,7 +67,7 @@ import akka.routing.TailChoppingPool;
 
 //#imports2
 
-public class RouterDocTest {
+public class RouterDocTest extends AbstractJavaTest {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource =
@@ -338,7 +339,13 @@ public class RouterDocTest {
       getContext().actorOf(new RoundRobinPool(5).withResizer(resizer).props(
         Props.create(Worker.class)), "router30");
     //#resize-pool-2  
-      
+
+    //#optimal-size-exploring-resize-pool
+    ActorRef router31 =
+      getContext().actorOf(FromConfig.getInstance().props(
+        Props.create(Worker.class)), "router31");
+    //#optimal-size-exploring-resize-pool
+
     public void onReceive(Object msg) {}
   }
 
@@ -437,6 +444,18 @@ public class RouterDocTest {
       new RemoteRouterConfig(new RoundRobinPool(5), addresses).props(
         Props.create(Echo.class)));
     //#remoteRoutees
+  }
+  
+  // only compile
+  public void demonstrateRemoteDeployWithArtery() {
+    //#remoteRoutees-artery
+    Address[] addresses = {
+      new Address("akka", "remotesys", "otherhost", 1234),
+      AddressFromURIString.parse("akka://othersys@anotherhost:1234")};
+    ActorRef routerRemote = system.actorOf(
+      new RemoteRouterConfig(new RoundRobinPool(5), addresses).props(
+        Props.create(Echo.class)));
+    //#remoteRoutees-artery
   }
   
   @Test

@@ -1,17 +1,15 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.contrib.throttle
 
 import scala.concurrent.duration.{ Duration, FiniteDuration }
-import scala.util.control.NonFatal
 import scala.collection.immutable.{ Queue ⇒ Q }
 import akka.actor.{ ActorRef, Actor, FSM }
 import Throttler._
 import TimerBasedThrottler._
 import java.util.concurrent.TimeUnit
-import akka.AkkaException
 
 /**
  * @see [[akka.contrib.throttle.TimerBasedThrottler]]
@@ -81,8 +79,6 @@ object Throttler {
    */
   final case class SetRate(rate: Rate)
 
-  import language.implicitConversions
-
   /**
    * Helper for some syntactic sugar.
    *
@@ -113,9 +109,10 @@ private[throttle] object TimerBasedThrottler {
   final case class Message(message: Any, sender: ActorRef)
 
   // The data of the FSM
-  final case class Data(target: Option[ActorRef],
-                        callsLeftInThisPeriod: Int,
-                        queue: Q[Message])
+  final case class Data(
+    target:                Option[ActorRef],
+    callsLeftInThisPeriod: Int,
+    queue:                 Q[Message])
 }
 
 /**
@@ -218,6 +215,8 @@ private[throttle] object TimerBasedThrottler {
  * @see [[akka.contrib.throttle.Throttler]]
  */
 class TimerBasedThrottler(var rate: Rate) extends Actor with FSM[State, Data] {
+  import FSM.`→`
+
   startWith(Idle, Data(None, rate.numberOfCalls, Q()))
 
   // Idle: no messages, or target not set
@@ -281,8 +280,8 @@ class TimerBasedThrottler(var rate: Rate) extends Actor with FSM[State, Data] {
   }
 
   onTransition {
-    case Idle -> Active ⇒ startTimer(rate)
-    case Active -> Idle ⇒ stopTimer()
+    case Idle → Active ⇒ startTimer(rate)
+    case Active → Idle ⇒ stopTimer()
   }
 
   initialize()

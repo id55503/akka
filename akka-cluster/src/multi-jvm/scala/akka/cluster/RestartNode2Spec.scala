@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2014 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -52,7 +52,8 @@ abstract class RestartNode2SpecSpec
   def seedNodes: immutable.IndexedSeq[Address] = Vector(seedNode1Address, seed2)
 
   // this is the node that will attempt to re-join, keep gate times low so it can retry quickly
-  lazy val restartedSeed1System = ActorSystem(system.name,
+  lazy val restartedSeed1System = ActorSystem(
+    system.name,
     ConfigFactory.parseString(
       s"""
       akka.remote.netty.tcp.port= ${seedNodes.head.port.get}

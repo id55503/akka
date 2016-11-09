@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -7,17 +7,19 @@ import com.typesafe.config.ConfigFactory
 import akka.remote.testkit.MultiNodeConfig
 import akka.remote.testkit.MultiNodeSpec
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
+
 import scala.concurrent.duration._
 import akka.testkit._
 import akka.testkit.TestEvent._
-import scala.concurrent.forkjoin.ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom
+
 import akka.remote.testconductor.RoleName
 import akka.actor.Props
 import akka.actor.Actor
+
 import scala.util.control.NoStackTrace
-import akka.remote.QuarantinedEvent
+import akka.remote.{ QuarantinedEvent, RARP, RemoteActorRefProvider }
 import akka.actor.ExtendedActorSystem
-import akka.remote.RemoteActorRefProvider
 import akka.actor.ActorRef
 import akka.dispatch.sysmsg.Failed
 import akka.actor.PoisonPill
@@ -34,7 +36,11 @@ object SurviveNetworkInstabilityMultiJvmSpec extends MultiNodeConfig {
   val eighth = role("eighth")
 
   commonConfig(debugConfig(on = false).withFallback(
-    ConfigFactory.parseString("akka.remote.system-message-buffer-size=100")).
+    ConfigFactory.parseString("""
+      akka.remote.system-message-buffer-size=100
+      akka.remote.artery.advanced.system-message-buffer-size=100
+      akka.remote.netty.tcp.connection-timeout = 10s
+      """)).
     withFallback(MultiNodeClusterSpec.clusterConfig))
 
   testTransport(on = true)
@@ -223,7 +229,7 @@ abstract class SurviveNetworkInstabilitySpec
         cluster.join(first)
 
         // let them join and stabilize heartbeating
-        Thread.sleep(5000)
+        Thread.sleep(5000.millis.dilated.toMillis)
       }
 
       enterBarrier("joined-5")
@@ -327,9 +333,19 @@ abstract class SurviveNetworkInstabilitySpec
       runOn(side1AfterJoin: _*) {
         // side2 removed
         val expected = (side1AfterJoin map address).toSet
-        awaitAssert(clusterView.members.map(_.address) should ===(expected))
-        awaitAssert(clusterView.members.collectFirst { case m if m.address == address(eighth) ⇒ m.status } should ===(
-          Some(MemberStatus.Up)))
+        awaitAssert {
+          // repeat the downing in case it was not successful, which may
+          // happen if the removal was reverted due to gossip merge, see issue #18767
+          runOn(fourth) {
+            for (role2 ← side2) {
+              cluster.down(role2)
+            }
+          }
+
+          clusterView.members.map(_.address) should ===(expected)
+          clusterView.members.collectFirst { case m if m.address == address(eighth) ⇒ m.status } should ===(
+            Some(MemberStatus.Up))
+        }
       }
 
       enterBarrier("side2-removed")
@@ -350,13 +366,14 @@ abstract class SurviveNetworkInstabilitySpec
       }
 
       runOn(side2: _*) {
+        // side2 comes back but stays unreachable
         val expected = ((side2 ++ side1) map address).toSet
         clusterView.members.map(_.address) should ===(expected)
         assertUnreachable(side1: _*)
       }
 
       enterBarrier("after-7")
-      assertCanTalk((side1AfterJoin): _*)
+      assertCanTalk(side1AfterJoin: _*)
     }
 
   }

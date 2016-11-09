@@ -227,7 +227,7 @@ observer.
 Ordering of Local Message Sends
 -------------------------------
 
-Assuming strict FIFO mailboxes the abovementioned caveat of non-transitivity of
+Assuming strict FIFO mailboxes the aforementioned caveat of non-transitivity of
 the message ordering guarantee is eliminated under certain conditions. As you
 will note, these are quite subtle as it stands, and it is even possible that
 future performance optimizations will invalidate this whole paragraph. The
@@ -253,24 +253,24 @@ escaped our analysis.
 How does Local Ordering relate to Network Ordering
 --------------------------------------------------
 
-As explained in the previous paragraph local message sends obey transitive
-causal ordering under certain conditions. If the remote message transport would
-respect this ordering as well, that would translate to transitive causal
-ordering across one network link, i.e. if exactly two network hosts are
-involved. Involving multiple links, e.g. the three actors on three different
-nodes mentioned above, then no guarantees can be made.
+The rule that *for a given pair of actors, messages sent directly from the first 
+to the second will not be received out-of-order* holds for messages sent over the
+network with the TCP based Akka remote transport protocol.
 
-The current remote transport does **not** support this (again this is caused by
-non-FIFO wake-up order of a lock, this time serializing connection
-establishment).
+As explained in the previous section local message sends obey transitive causal
+ordering under certain conditions. This ordering can be violated due to different
+message delivery latencies. For example:
 
-As a speculative view into the future it might be possible to support this
-ordering guarantee by re-implementing the remote transport layer based
-completely on actors; at the same time we are looking into providing other
-low-level transport protocols like UDP or SCTP which would enable higher
-throughput or lower latency by removing this guarantee again, which would mean
-that choosing between different implementations would allow trading guarantees
-versus performance.
+  Actor ``A`` on node-1 sends message ``M1`` to actor ``C`` on node-3
+
+  Actor ``A`` on node-1 then sends message ``M2`` to actor ``B`` on node-2
+
+  Actor ``B`` on node-2 forwards message ``M2`` to actor ``C`` on node-3
+
+  Actor ``C`` may receive ``M1`` and ``M2`` in any order
+
+It might take longer time for ``M1`` to "travel" to node-3 than it takes
+for ``M2`` to "travel" to node-3 via node-2.
 
 Higher-level abstractions
 =========================
@@ -291,13 +291,13 @@ delivery is an explicit ACK–RETRY protocol. In its simplest form this requires
 
 The third becomes necessary by virtue of the acknowledgements not being guaranteed
 to arrive either. An ACK-RETRY protocol with business-level acknowledgements is
-supported by :ref:`at-least-once-delivery` of the Akka Persistence module. Duplicates can be
-detected by tracking the identifiers of messages sent via :ref:`at-least-once-delivery`.
+supported by :ref:`at-least-once-delivery-scala` of the Akka Persistence module. Duplicates can be
+detected by tracking the identifiers of messages sent via :ref:`at-least-once-delivery-scala`.
 Another way of implementing the third part would be to make processing the messages
 idempotent on the level of the business logic.
 
 Another example of implementing all three requirements is shown at
-:ref:`reliable-proxy` (which is now superseded by :ref:`at-least-once-delivery`).
+:ref:`reliable-proxy` (which is now superseded by :ref:`at-least-once-delivery-scala`).
 
 Event Sourcing
 --------------
@@ -313,13 +313,13 @@ components may consume the event stream as a means to replicate the component’
 state on a different continent or to react to changes). If the component’s
 state is lost—due to a machine failure or by being pushed out of a cache—it can
 easily be reconstructed by replaying the event stream (usually employing
-snapshots to speed up the process). :ref:`event-sourcing` is supported by
+snapshots to speed up the process). :ref:`event-sourcing-scala` is supported by
 Akka Persistence.
 
 Mailbox with Explicit Acknowledgement
 -------------------------------------
 
-By implementing a custom mailbox type it is possible retry message processing
+By implementing a custom mailbox type it is possible to retry message processing
 at the receiving actor’s end in order to handle temporary failures. This
 pattern is mostly useful in the local communication context where delivery
 guarantees are otherwise sufficient to fulfill the application’s requirements.

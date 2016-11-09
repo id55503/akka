@@ -7,8 +7,8 @@ import scala.concurrent.{ Await }
 import scala.concurrent.duration._
 import akka.pattern.ask
 import scala.util.Try
+import java.util.concurrent.atomic.AtomicInteger
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class TestProbeSpec extends AkkaSpec with DefaultTimeout {
 
   "A TestProbe" must {
@@ -38,6 +38,38 @@ class TestProbeSpec extends AkkaSpec with DefaultTimeout {
       probe2.expectMsg(0 millis, "hello")
       probe2.lastMessage.sender ! "world"
       probe1.expectMsg(0 millis, "some hint here", "world")
+    }
+
+    "create a child when invoking actorOf" in {
+      val probe = TestProbe()
+      val child = probe.childActorOf(TestActors.echoActorProps)
+      child.path.parent should be(probe.ref.path)
+
+      val namedChild = probe.childActorOf(TestActors.echoActorProps, "actorName")
+      namedChild.path.name should be("actorName")
+    }
+
+    "restart a failing child if the given supervisor says so" in {
+      val restarts = new AtomicInteger(0)
+
+      class FailingActor extends Actor {
+        override def receive = msg ⇒ msg match {
+          case _ ⇒
+            throw new RuntimeException("simulated failure")
+        }
+
+        override def postRestart(reason: Throwable): Unit = {
+          restarts.incrementAndGet()
+        }
+      }
+
+      val probe = TestProbe()
+      val child = probe.childActorOf(Props(new FailingActor), SupervisorStrategy.defaultStrategy)
+
+      awaitAssert {
+        child ! "hello"
+        restarts.get() should be > (1)
+      }
     }
 
     def assertFailureMessageContains(expectedHint: String)(block: ⇒ Unit) {

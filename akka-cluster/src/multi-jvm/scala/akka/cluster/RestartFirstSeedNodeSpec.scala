@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -10,6 +10,7 @@ import org.scalatest.BeforeAndAfter
 import akka.remote.testkit.MultiNodeConfig
 import akka.remote.testkit.MultiNodeSpec
 import akka.testkit._
+
 import scala.concurrent.duration._
 import akka.actor.Address
 import akka.actor.ActorSystem
@@ -18,6 +19,7 @@ import akka.actor.Actor
 import akka.actor.RootActorPath
 import akka.cluster.MemberStatus._
 import akka.actor.Deploy
+import akka.remote.RARP
 
 object RestartFirstSeedNodeMultiJvmSpec extends MultiNodeConfig {
   val seed1 = role("seed1")
@@ -50,9 +52,14 @@ abstract class RestartFirstSeedNodeSpec
   def missingSeed = address(seed3).copy(port = Some(61313))
   def seedNodes: immutable.IndexedSeq[Address] = Vector(seedNode1Address, seed2, seed3, missingSeed)
 
-  lazy val restartedSeed1System = ActorSystem(system.name,
-    ConfigFactory.parseString("akka.remote.netty.tcp.port=" + seedNodes.head.port.get).
-      withFallback(system.settings.config))
+  lazy val restartedSeed1System = ActorSystem(
+    system.name,
+    ConfigFactory.parseString(
+      if (RARP(system).provider.remoteSettings.Artery.Enabled)
+        "akka.remote.artery.canonical.port=" + seedNodes.head.port.get
+      else
+        "akka.remote.netty.tcp.port=" + seedNodes.head.port.get
+    ).withFallback(system.settings.config))
 
   override def afterAll(): Unit = {
     runOn(seed1) {

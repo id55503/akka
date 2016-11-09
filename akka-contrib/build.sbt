@@ -1,19 +1,9 @@
-import akka.{ AkkaBuild, Dependencies, Formatting, MultiNode, Unidoc }
-import com.typesafe.tools.mima.plugin.MimaKeys
+import akka.{ AkkaBuild, Dependencies, Formatting, OSGi, MultiNode, ScaladocNoVerificationOfDiagrams }
 
 AkkaBuild.defaultSettings
-
 Formatting.formatSettings
-
-Unidoc.scaladocSettingsNoVerificationOfDiagrams
-
-Unidoc.javadocSettings
-
-MultiNode.multiJvmSettings
-
+OSGi.contrib
 Dependencies.contrib
-
-MimaKeys.reportBinaryIssues := () // disable bin comp check
 
 description := """|
                   |This subproject provides a home to modules contributed by external
@@ -22,6 +12,9 @@ description := """|
                   |of staying binary compatible between minor releases. Breaking API changes
                   |may be introduced in minor releases without notice as we refine and
                   |simplify based on your feedback. A module may be dropped in any release
-                  |without prior deprecation. The Typesafe subscription does not cover
+                  |without prior deprecation. The Lightbend subscription does not cover
                   |support for these modules.
                   |""".stripMargin
+
+enablePlugins(MultiNode, ScaladocNoVerificationOfDiagrams)
+disablePlugins(MimaPlugin)

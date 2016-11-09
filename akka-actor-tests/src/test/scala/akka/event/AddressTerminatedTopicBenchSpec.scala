@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.event
 
@@ -7,7 +7,6 @@ import scala.concurrent.duration._
 import akka.actor.Actor
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-import akka.actor.Address
 import akka.actor.Props
 import akka.testkit._
 
@@ -25,7 +24,6 @@ object AddressTerminatedTopicBenchSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class AddressTerminatedTopicBenchSpec extends AkkaSpec("akka.loglevel=INFO") {
   import AddressTerminatedTopicBenchSpec._
 

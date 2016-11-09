@@ -1,9 +1,8 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.camel
 
-import language.postfixOps
 import org.scalatest.WordSpec
 import org.scalatest.Matchers
 import scala.concurrent.{ Promise, Await, Future }
@@ -68,8 +67,8 @@ class ConcurrentActivationTest extends WordSpec with Matchers with NonSharedCame
         }
         val (activatedConsumerNames, activatedProducerNames) = partitionNames(activations)
         val (deactivatedConsumerNames, deactivatedProducerNames) = partitionNames(deactivations)
-        assertContainsSameElements(activatedConsumerNames -> deactivatedConsumerNames)
-        assertContainsSameElements(activatedProducerNames -> deactivatedProducerNames)
+        assertContainsSameElements(activatedConsumerNames → deactivatedConsumerNames)
+        assertContainsSameElements(activatedProducerNames → deactivatedProducerNames)
       } finally {
         system.eventStream.publish(TestEvent.UnMute(eventFilter))
       }
@@ -96,7 +95,7 @@ class ConsumerBroadcast(promise: Promise[(Future[List[List[ActorRef]]], Future[L
         val routee = context.actorOf(Props(classOf[Registrar], i, number, activationListPromise, deactivationListPromise), "registrar-" + i)
         routee.path.toString
       }
-      promise.success(Future.sequence(allActivationFutures) -> Future.sequence(allDeactivationFutures))
+      promise.success(Future.sequence(allActivationFutures) → Future.sequence(allDeactivationFutures))
 
       broadcaster = Some(context.actorOf(BroadcastGroup(routeePaths).props(), "registrarRouter"))
     case reg: Any ⇒

@@ -1,9 +1,8 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit.metrics
 
-import com.codahale.metrics
 import com.codahale.metrics._
 import java.util
 import com.codahale.metrics.jvm
@@ -27,7 +26,7 @@ private[akka] trait MetricsKitOps extends MetricKeyDSL {
 
   /**
    * Used to measure timing of known number of operations over time.
-   * While not being the most percise, it allows to measure a coarse op/s without injecting counters to the measured operation (potentially hot-loop).
+   * While not being the most precise, it allows to measure a coarse op/s without injecting counters to the measured operation (potentially hot-loop).
    *
    * Do not use for short running pieces of code.
    */
@@ -92,6 +91,6 @@ private[metrics] trait MetricsPrefix extends MetricSet {
   abstract override def getMetrics: util.Map[String, Metric] = {
     // does not have to be fast, is only called once during registering registry
     import collection.JavaConverters._
-    (super.getMetrics.asScala.map { case (k, v) ⇒ (prefix / k).toString -> v }).asJava
+    (super.getMetrics.asScala.map { case (k, v) ⇒ (prefix / k).toString → v }).asJava
   }
 }

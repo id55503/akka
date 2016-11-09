@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.io
@@ -7,10 +7,8 @@ package akka.io
 import java.net.InetSocketAddress
 import java.nio.channels.{ SelectionKey, SocketChannel }
 import scala.util.control.NonFatal
-import scala.collection.immutable
 import scala.concurrent.duration._
 import akka.actor.{ ReceiveTimeout, ActorRef }
-import akka.io.Inet.SocketOption
 import akka.io.TcpConnection.CloseInformation
 import akka.io.SelectionHandler._
 import akka.io.Tcp._
@@ -21,16 +19,17 @@ import akka.io.Tcp._
  *
  * INTERNAL API
  */
-private[io] class TcpOutgoingConnection(_tcp: TcpExt,
-                                        channelRegistry: ChannelRegistry,
-                                        commander: ActorRef,
-                                        connect: Connect)
+private[io] class TcpOutgoingConnection(
+  _tcp:            TcpExt,
+  channelRegistry: ChannelRegistry,
+  commander:       ActorRef,
+  connect:         Connect)
   extends TcpConnection(_tcp, SocketChannel.open().configureBlocking(false).asInstanceOf[SocketChannel], connect.pullMode) {
 
   import context._
   import connect._
 
-  context.watch(commander) // sign death pact
+  signDeathPact(commander)
 
   options.foreach(_.beforeConnect(channel.socket))
   localAddress.foreach(channel.socket.bind)

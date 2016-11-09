@@ -1,19 +1,9 @@
-import akka.{ AkkaBuild, Formatting, OSGi, Unidoc, Dependencies }
-import com.typesafe.tools.mima.plugin.MimaKeys
+import akka.{ AkkaBuild, Formatting, OSGi, Dependencies, Version }
 
 AkkaBuild.defaultSettings
-
 Formatting.formatSettings
-
-Unidoc.scaladocSettings
-
-Unidoc.javadocSettings
-
 OSGi.actor
-
 Dependencies.actor
+Version.versionSettings
 
-MimaKeys.previousArtifact := akkaPreviousArtifact("akka-actor").value
-
-spray.boilerplate.BoilerplatePlugin.Boilerplate.settings
-
+enablePlugins(spray.boilerplate.BoilerplatePlugin)

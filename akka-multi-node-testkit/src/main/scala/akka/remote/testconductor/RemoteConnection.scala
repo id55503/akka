@@ -1,19 +1,48 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.testconductor
 
-import org.jboss.netty.channel.{ Channel, ChannelPipeline, ChannelPipelineFactory, ChannelUpstreamHandler, SimpleChannelUpstreamHandler, DefaultChannelPipeline }
+import org.jboss.netty.channel.{ Channel, ChannelPipeline, ChannelPipelineFactory, ChannelUpstreamHandler, DefaultChannelPipeline }
 import org.jboss.netty.channel.socket.nio.{ NioClientSocketChannelFactory, NioServerSocketChannelFactory }
 import org.jboss.netty.bootstrap.{ ClientBootstrap, ServerBootstrap }
 import org.jboss.netty.handler.codec.frame.{ LengthFieldBasedFrameDecoder, LengthFieldPrepender }
-import org.jboss.netty.handler.codec.compression.{ ZlibDecoder, ZlibEncoder }
-import org.jboss.netty.handler.codec.protobuf.{ ProtobufDecoder, ProtobufEncoder }
-import org.jboss.netty.handler.timeout.{ ReadTimeoutHandler, ReadTimeoutException }
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import akka.event.Logging
 import akka.util.Helpers
+import org.jboss.netty.handler.codec.oneone.{ OneToOneEncoder, OneToOneDecoder }
+import org.jboss.netty.channel.ChannelHandlerContext
+import akka.protobuf.Message
+import org.jboss.netty.buffer.ChannelBuffer
+
+/**
+ * INTERNAL API.
+ */
+private[akka] class ProtobufEncoder extends OneToOneEncoder {
+  override def encode(ctx: ChannelHandlerContext, ch: Channel, msg: AnyRef): AnyRef =
+    msg match {
+      case m: Message ⇒
+        val bytes = m.toByteArray()
+        ctx.getChannel.getConfig.getBufferFactory.getBuffer(bytes, 0, bytes.length)
+      case other ⇒ other
+    }
+}
+
+/**
+ * INTERNAL API.
+ */
+private[akka] class ProtobufDecoder(prototype: Message) extends OneToOneDecoder {
+  override def decode(ctx: ChannelHandlerContext, ch: Channel, obj: AnyRef): AnyRef =
+    obj match {
+      case buf: ChannelBuffer ⇒
+        val len = buf.readableBytes()
+        val bytes = new Array[Byte](len)
+        buf.getBytes(buf.readerIndex, bytes, 0, len)
+        prototype.getParserForType.parseFrom(bytes)
+      case other ⇒ other
+    }
+}
 
 /**
  * INTERNAL API.

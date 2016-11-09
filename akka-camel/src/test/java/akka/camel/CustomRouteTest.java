@@ -7,6 +7,7 @@ import akka.camel.javaapi.UntypedProducerActor;
 import akka.testkit.AkkaJUnitActorSystemResource;
 import akka.util.Timeout;
 import org.junit.*;
+import org.scalatest.junit.JUnitSuite;
 import scala.concurrent.Await;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
@@ -19,17 +20,22 @@ import org.apache.camel.component.mock.MockEndpoint;
 
 import java.util.concurrent.TimeUnit;
 
-public class CustomRouteTest {
+public class CustomRouteTest extends JUnitSuite {
 
   @Rule
-  public AkkaJUnitActorSystemResource actorSystemResource =
-    new AkkaJUnitActorSystemResource("CustomRouteTest");
+  public AkkaJUnitActorSystemResource actorSystemResource = new AkkaJUnitActorSystemResource("CustomRouteTest");
 
-  private final ActorSystem system = actorSystemResource.getSystem();
-  private Camel camel = (Camel) CamelExtension.get(system);
+  private ActorSystem system = null;
+  private Camel camel = null;
 
   public static class MyActor extends UntypedActor {
     @Override public void onReceive(Object o) {}
+  }
+
+  @Before
+  public void beforeEach() {
+    system = actorSystemResource.getSystem();
+    camel = (Camel) CamelExtension.get(system);
   }
 
   @Test
@@ -117,6 +123,7 @@ public class CustomRouteTest {
   private void assertMockEndpoint(MockEndpoint mockEndpoint) throws InterruptedException {
     mockEndpoint.expectedMessageCount(1);
     mockEndpoint.expectedMessagesMatches(new Predicate() {
+      @Override
       public boolean matches(Exchange exchange) {
         return exchange.getIn().getBody().equals("test");
       }
@@ -125,8 +132,8 @@ public class CustomRouteTest {
   }
 
   public static class CustomRouteBuilder extends RouteBuilder {
-    private String uri;
-    private String fromUri;
+    private final String uri;
+    private final String fromUri;
 
     public CustomRouteBuilder(String from, String to) {
       fromUri = from;
@@ -163,7 +170,7 @@ public class CustomRouteTest {
   }
 
   public static class EndpointProducer extends UntypedProducerActor {
-    private String uri;
+    private final String uri;
 
     public EndpointProducer(String uri) {
       this.uri = uri;
@@ -191,8 +198,8 @@ public class CustomRouteTest {
   }
 
   public static class TestAckConsumer extends UntypedConsumerActor {
-    private String myuri;
-    private String to;
+    private final String myuri;
+    private final String to;
 
     public TestAckConsumer(String uri, String to){
       myuri = uri;

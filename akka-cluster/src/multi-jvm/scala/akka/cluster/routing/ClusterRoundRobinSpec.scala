@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.routing
 
@@ -52,33 +52,33 @@ object ClusterRoundRobinMultiJvmSpec extends MultiNodeConfig {
       akka.actor.deployment {
         /router1 {
           router = round-robin-pool
-          nr-of-instances = 10
           cluster {
             enabled = on
             max-nr-of-instances-per-node = 2
+            max-total-nr-of-instances = 10
           }
         }
         /router3 {
           router = round-robin-pool
-          nr-of-instances = 10
           cluster {
             enabled = on
             max-nr-of-instances-per-node = 1
+            max-total-nr-of-instances = 10
             allow-local-routees = off
           }
         }
         /router4 {
           router = round-robin-group
-          nr-of-instances = 10
           routees.paths = ["/user/myserviceA", "/user/myserviceB"]
           cluster.enabled = on
+          cluster.max-total-nr-of-instances = 10
         }
         /router5 {
           router = round-robin-pool
-          nr-of-instances = 10
           cluster {
             enabled = on
             use-role = a
+            max-total-nr-of-instances = 10
           }
         }
       }
@@ -103,20 +103,22 @@ abstract class ClusterRoundRobinSpec extends MultiNodeSpec(ClusterRoundRobinMult
   import ClusterRoundRobinMultiJvmSpec._
 
   lazy val router1 = system.actorOf(FromConfig.props(Props[SomeActor]), "router1")
-  lazy val router2 = system.actorOf(ClusterRouterPool(RoundRobinPool(nrOfInstances = 0),
-    ClusterRouterPoolSettings(totalInstances = 3, maxInstancesPerNode = 1, allowLocalRoutees = true, useRole = None)).
-    props(Props[SomeActor]),
+  lazy val router2 = system.actorOf(
+    ClusterRouterPool(
+      RoundRobinPool(nrOfInstances = 0),
+      ClusterRouterPoolSettings(totalInstances = 3, maxInstancesPerNode = 1, allowLocalRoutees = true, useRole = None)).
+      props(Props[SomeActor]),
     "router2")
   lazy val router3 = system.actorOf(FromConfig.props(Props[SomeActor]), "router3")
   lazy val router4 = system.actorOf(FromConfig.props(), "router4")
   lazy val router5 = system.actorOf(RoundRobinPool(nrOfInstances = 0).props(Props[SomeActor]), "router5")
 
   def receiveReplies(routeeType: RouteeType, expectedReplies: Int): Map[Address, Int] = {
-    val zero = Map.empty[Address, Int] ++ roles.map(address(_) -> 0)
+    val zero = Map.empty[Address, Int] ++ roles.map(address(_) → 0)
     (receiveWhile(5 seconds, messages = expectedReplies) {
       case Reply(`routeeType`, ref) ⇒ fullAddress(ref)
     }).foldLeft(zero) {
-      case (replyMap, address) ⇒ replyMap + (address -> (replyMap(address) + 1))
+      case (replyMap, address) ⇒ replyMap + (address → (replyMap(address) + 1))
     }
   }
 
@@ -342,7 +344,7 @@ abstract class ClusterRoundRobinSpec extends MultiNodeSpec(ClusterRoundRobinMult
         def routeeAddresses = (routees map { case ActorRefRoutee(ref) ⇒ fullAddress(ref) }).toSet
 
         routees foreach { case ActorRefRoutee(ref) ⇒ watch(ref) }
-        val notUsedAddress = ((roles map address).toSet -- routeeAddresses).head
+        val notUsedAddress = ((roles map address).toSet diff routeeAddresses).head
         val downAddress = routeeAddresses.find(_ != address(first)).get
         val downRouteeRef = routees.collectFirst {
           case ActorRefRoutee(ref) if ref.path.address == downAddress ⇒ ref

@@ -1,12 +1,11 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.io
 
 import java.net.InetSocketAddress
 import java.net.Socket
-import akka.ConfigurationException
 import akka.io.Inet._
 import com.typesafe.config.Config
 import scala.concurrent.duration._
@@ -26,7 +25,7 @@ import java.lang.{ Iterable ⇒ JIterable }
  * In order to open an outbound connection send a [[Tcp.Connect]] message
  * to the [[TcpExt#manager]].
  *
- * In order to start listening for inbound connetions send a [[Tcp.Bind]]
+ * In order to start listening for inbound connections send a [[Tcp.Bind]]
  * message to the [[TcpExt#manager]].
  *
  * The Java API for generating TCP commands is available at [[TcpMessage]].
@@ -111,11 +110,12 @@ object Tcp extends ExtensionId[TcpExt] with ExtensionIdProvider {
    * @param localAddress optionally specifies a specific address to bind to
    * @param options Please refer to the `Tcp.SO` object for a list of all supported options.
    */
-  final case class Connect(remoteAddress: InetSocketAddress,
-                           localAddress: Option[InetSocketAddress] = None,
-                           options: immutable.Traversable[SocketOption] = Nil,
-                           timeout: Option[FiniteDuration] = None,
-                           pullMode: Boolean = false) extends Command
+  final case class Connect(
+    remoteAddress: InetSocketAddress,
+    localAddress:  Option[InetSocketAddress]           = None,
+    options:       immutable.Traversable[SocketOption] = Nil,
+    timeout:       Option[FiniteDuration]              = None,
+    pullMode:      Boolean                             = false) extends Command
 
   /**
    * The Bind message is send to the TCP manager actor, which is obtained via
@@ -136,11 +136,12 @@ object Tcp extends ExtensionId[TcpExt] with ExtensionIdProvider {
    *
    * @param options Please refer to the `Tcp.SO` object for a list of all supported options.
    */
-  final case class Bind(handler: ActorRef,
-                        localAddress: InetSocketAddress,
-                        backlog: Int = 100,
-                        options: immutable.Traversable[SocketOption] = Nil,
-                        pullMode: Boolean = false) extends Command
+  final case class Bind(
+    handler:      ActorRef,
+    localAddress: InetSocketAddress,
+    backlog:      Int                                 = 100,
+    options:      immutable.Traversable[SocketOption] = Nil,
+    pullMode:     Boolean                             = false) extends Command
 
   /**
    * This message must be sent to a TCP connection actor after receiving the
@@ -172,7 +173,7 @@ object Tcp extends ExtensionId[TcpExt] with ExtensionIdProvider {
   /**
    * Common interface for all commands which aim to close down an open connection.
    */
-  sealed trait CloseCommand extends Command {
+  sealed trait CloseCommand extends Command with DeadLetterSuppression {
     /**
      * The corresponding event which is sent as an acknowledgment once the
      * close operation is finished.
@@ -625,11 +626,12 @@ object TcpMessage {
    * @param timeout is the desired connection timeout, `null` means "no timeout"
    * @param pullMode enables pull based reading from the connection
    */
-  def connect(remoteAddress: InetSocketAddress,
-              localAddress: InetSocketAddress,
-              options: JIterable[SocketOption],
-              timeout: FiniteDuration,
-              pullMode: Boolean): Command = Connect(remoteAddress, Option(localAddress), options, Option(timeout), pullMode)
+  def connect(
+    remoteAddress: InetSocketAddress,
+    localAddress:  InetSocketAddress,
+    options:       JIterable[SocketOption],
+    timeout:       FiniteDuration,
+    pullMode:      Boolean): Command = Connect(remoteAddress, Option(localAddress), options, Option(timeout), pullMode)
 
   /**
    * Connect to the given `remoteAddress` without binding to a local address and without
@@ -659,17 +661,19 @@ object TcpMessage {
    * @param pullMode enables pull based accepting and of connections and pull
    *                 based reading from the accepted connections.
    */
-  def bind(handler: ActorRef,
-           endpoint: InetSocketAddress,
-           backlog: Int,
-           options: JIterable[SocketOption],
-           pullMode: Boolean): Command = Bind(handler, endpoint, backlog, options, pullMode)
+  def bind(
+    handler:  ActorRef,
+    endpoint: InetSocketAddress,
+    backlog:  Int,
+    options:  JIterable[SocketOption],
+    pullMode: Boolean): Command = Bind(handler, endpoint, backlog, options, pullMode)
   /**
    * Open a listening socket without specifying options.
    */
-  def bind(handler: ActorRef,
-           endpoint: InetSocketAddress,
-           backlog: Int): Command = Bind(handler, endpoint, backlog, Nil)
+  def bind(
+    handler:  ActorRef,
+    endpoint: InetSocketAddress,
+    backlog:  Int): Command = Bind(handler, endpoint, backlog, Nil)
 
   /**
    * This message must be sent to a TCP connection actor after receiving the

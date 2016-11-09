@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -22,8 +22,7 @@ object LocalActorRefProviderSpec {
         default-dispatcher {
           executor = "thread-pool-executor"
           thread-pool-executor {
-            core-pool-size-min = 16
-            core-pool-size-max = 16
+            fixed-pool-size = 16
           }
         }
       }
@@ -31,7 +30,6 @@ object LocalActorRefProviderSpec {
   """
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class LocalActorRefProviderSpec extends AkkaSpec(LocalActorRefProviderSpec.config) {
   "An LocalActorRefProvider" must {
 

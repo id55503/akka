@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2015-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.sharding
 
@@ -26,29 +26,7 @@ import akka.testkit._
 import com.typesafe.config.ConfigFactory
 import org.apache.commons.io.FileUtils
 
-object ClusterShardingLeavingSpec extends MultiNodeConfig {
-  val first = role("first")
-  val second = role("second")
-  val third = role("third")
-  val fourth = role("fourth")
-
-  commonConfig(ConfigFactory.parseString("""
-    akka.loglevel = DEBUG
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
-    akka.remote.log-remote-lifecycle-events = off
-    akka.cluster.auto-down-unreachable-after = 0s
-    akka.persistence.journal.plugin = "akka.persistence.journal.leveldb-shared"
-    akka.persistence.journal.leveldb-shared {
-      timeout = 5s
-      store {
-        native = off
-        dir = "target/journal-ClusterShardingLeavingSpec"
-      }
-    }
-    akka.persistence.snapshot-store.plugin = "akka.persistence.snapshot-store.local"
-    akka.persistence.snapshot-store.local.dir = "target/snapshots-ClusterShardingLeavingSpec"
-    """))
-
+object ClusterShardingLeavingSpec {
   case class Ping(id: String)
 
   class Entity extends Actor {
@@ -68,23 +46,59 @@ object ClusterShardingLeavingSpec extends MultiNodeConfig {
     }
   }
 
-  val idExtractor: ShardRegion.IdExtractor = {
+  val extractEntityId: ShardRegion.ExtractEntityId = {
     case m @ Ping(id) ⇒ (id, m)
   }
 
-  val shardResolver: ShardRegion.ShardResolver = {
+  val extractShardId: ShardRegion.ExtractShardId = {
     case Ping(id: String) ⇒ id.charAt(0).toString
   }
-
 }
 
-class ClusterShardingLeavingMultiJvmNode1 extends ClusterShardingLeavingSpec
-class ClusterShardingLeavingMultiJvmNode2 extends ClusterShardingLeavingSpec
-class ClusterShardingLeavingMultiJvmNode3 extends ClusterShardingLeavingSpec
-class ClusterShardingLeavingMultiJvmNode4 extends ClusterShardingLeavingSpec
+abstract class ClusterShardingLeavingSpecConfig(val mode: String) extends MultiNodeConfig {
+  val first = role("first")
+  val second = role("second")
+  val third = role("third")
+  val fourth = role("fourth")
 
-class ClusterShardingLeavingSpec extends MultiNodeSpec(ClusterShardingLeavingSpec) with STMultiNodeSpec with ImplicitSender {
+  commonConfig(ConfigFactory.parseString(s"""
+    akka.loglevel = INFO
+    akka.actor.provider = "cluster"
+    akka.remote.log-remote-lifecycle-events = off
+    akka.cluster.auto-down-unreachable-after = 0s
+    akka.persistence.journal.plugin = "akka.persistence.journal.leveldb-shared"
+    akka.persistence.journal.leveldb-shared {
+      timeout = 5s
+      store {
+        native = off
+        dir = "target/journal-ClusterShardingLeavingSpec"
+      }
+    }
+    akka.persistence.snapshot-store.plugin = "akka.persistence.snapshot-store.local"
+    akka.persistence.snapshot-store.local.dir = "target/snapshots-ClusterShardingLeavingSpec"
+    akka.cluster.sharding.state-store-mode = "$mode"
+    """))
+}
+
+object PersistentClusterShardingLeavingSpecConfig extends ClusterShardingLeavingSpecConfig("persistence")
+object DDataClusterShardingLeavingSpecConfig extends ClusterShardingLeavingSpecConfig("ddata")
+
+class PersistentClusterShardingLeavingSpec extends ClusterShardingLeavingSpec(PersistentClusterShardingLeavingSpecConfig)
+class DDataClusterShardingLeavingSpec extends ClusterShardingLeavingSpec(DDataClusterShardingLeavingSpecConfig)
+
+class PersistentClusterShardingLeavingMultiJvmNode1 extends PersistentClusterShardingLeavingSpec
+class PersistentClusterShardingLeavingMultiJvmNode2 extends PersistentClusterShardingLeavingSpec
+class PersistentClusterShardingLeavingMultiJvmNode3 extends PersistentClusterShardingLeavingSpec
+class PersistentClusterShardingLeavingMultiJvmNode4 extends PersistentClusterShardingLeavingSpec
+
+class DDataClusterShardingLeavingMultiJvmNode1 extends DDataClusterShardingLeavingSpec
+class DDataClusterShardingLeavingMultiJvmNode2 extends DDataClusterShardingLeavingSpec
+class DDataClusterShardingLeavingMultiJvmNode3 extends DDataClusterShardingLeavingSpec
+class DDataClusterShardingLeavingMultiJvmNode4 extends DDataClusterShardingLeavingSpec
+
+abstract class ClusterShardingLeavingSpec(config: ClusterShardingLeavingSpecConfig) extends MultiNodeSpec(config) with STMultiNodeSpec with ImplicitSender {
   import ClusterShardingLeavingSpec._
+  import config._
 
   override def initialParticipants = roles.size
 
@@ -111,7 +125,7 @@ class ClusterShardingLeavingSpec extends MultiNodeSpec(ClusterShardingLeavingSpe
     runOn(from) {
       cluster join node(to).address
       startSharding()
-      within(5.seconds) {
+      within(15.seconds) {
         awaitAssert(cluster.state.members.exists { m ⇒
           m.uniqueAddress == cluster.selfUniqueAddress && m.status == MemberStatus.Up
         } should be(true))
@@ -123,16 +137,15 @@ class ClusterShardingLeavingSpec extends MultiNodeSpec(ClusterShardingLeavingSpe
   def startSharding(): Unit = {
     ClusterSharding(system).start(
       typeName = "Entity",
-      entryProps = Some(Props[Entity]),
-      roleOverride = None,
-      rememberEntries = false,
-      idExtractor = idExtractor,
-      shardResolver = shardResolver)
+      entityProps = Props[Entity],
+      settings = ClusterShardingSettings(system),
+      extractEntityId = extractEntityId,
+      extractShardId = extractShardId)
   }
 
   lazy val region = ClusterSharding(system).shardRegion("Entity")
 
-  "Cluster sharding with leaving member" must {
+  s"Cluster sharding ($mode) with leaving member" must {
 
     "setup shared journal" in {
       // start the Persistence extension
@@ -143,7 +156,7 @@ class ClusterShardingLeavingSpec extends MultiNodeSpec(ClusterShardingLeavingSpe
       enterBarrier("peristence-started")
 
       system.actorSelection(node(first) / "user" / "store") ! Identify(None)
-      val sharedStore = expectMsgType[ActorIdentity].ref.get
+      val sharedStore = expectMsgType[ActorIdentity](10.seconds).ref.get
       SharedLeveldbJournal.setStore(sharedStore, system)
 
       enterBarrier("after-1")
@@ -164,7 +177,7 @@ class ClusterShardingLeavingSpec extends MultiNodeSpec(ClusterShardingLeavingSpe
         val locations = (for (n ← 1 to 10) yield {
           val id = n.toString
           region ! Ping(id)
-          id -> expectMsgType[ActorRef]
+          id → expectMsgType[ActorRef]
         }).toMap
         shardLocations ! Locations(locations)
       }
@@ -178,7 +191,7 @@ class ClusterShardingLeavingSpec extends MultiNodeSpec(ClusterShardingLeavingSpe
 
       runOn(first) {
         watch(region)
-        expectTerminated(region, 5.seconds)
+        expectTerminated(region, 15.seconds)
       }
       enterBarrier("stopped")
 

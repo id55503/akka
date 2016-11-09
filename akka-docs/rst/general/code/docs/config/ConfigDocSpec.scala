@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.config
 
@@ -44,6 +44,12 @@ class ConfigDocSpec extends WordSpec with Matchers {
     
     # all direct children of '/user/actorC' have a dedicated dispatcher 
     "/actorC/*" {
+      dispatcher = my-dispatcher
+    }
+
+    # all descendants of '/user/actorC' (direct children, and their children recursively)
+    # have a dedicated dispatcher
+    "/actorC/**" {
       dispatcher = my-dispatcher
     }
     

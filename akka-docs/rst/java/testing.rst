@@ -9,21 +9,6 @@ development cycle. The actor model presents a different view on how units of
 code are delimited and how they interact, which has an influence on how to
 perform tests.
 
-.. note::
-
-  Due to the conciseness of test DSLs available for Scala (`ScalaTest`_,
-  `Specs2`_, `ScalaCheck`_), it may be a good idea to write the test suite in
-  that language even if the main project is written in Java. If that is not
-  desirable, you can also use :class:`TestKit` and friends from Java, albeit
-  with more verbose syntax which is covered below. Munish Gupta has `published
-  a nice post
-  <http://www.akkaessentials.in/2012/05/using-testkit-with-java.html>`_ showing
-  several patterns you may find useful.
-
-.. _ScalaTest:  http://scalatest.org/
-.. _Specs2:     http://specs2.org/
-.. _ScalaCheck: http://code.google.com/p/scalacheck/
-
 Akka comes with a dedicated module :mod:`akka-testkit` for supporting tests at
 different levels, which fall into two clearly distinct categories:
 
@@ -64,6 +49,17 @@ for test purposes and allows access to the actor in two ways: either by
 obtaining a reference to the underlying actor instance, or by invoking or
 querying the actor's behaviour (:meth:`receive`). Each one warrants its own
 section below.
+
+.. note::
+  It is highly recommended to stick to traditional behavioural testing (using messaging
+  to ask the Actor to reply with the state you want to run assertions against),
+  instead of using ``TestActorRef`` whenever possible.
+
+.. warning::
+  Due to the synchronous nature of ``TestActorRef`` it will **not** work with some support
+  traits that Akka provides as they require asynchronous behaviours to function properly.
+  Examples of traits that do not mix well with test actor refs are :ref:`PersistentActor <event-sourcing-java>`
+  and :ref:`AtLeastOnceDelivery <at-least-once-delivery-java>` provided by :ref:`Akka Persistence <persistence-java>`.
 
 Obtaining a Reference to an :class:`Actor`
 ------------------------------------------
@@ -140,6 +136,8 @@ suits your test needs:
 Feel free to experiment with the possibilities, and if you find useful
 patterns, don't hesitate to let the Akka forums know about them! Who knows,
 common operations might even be worked into nice DSLs.
+
+.. _async-integration-testing-java:
 
 Asynchronous Integration Testing with :class:`JavaTestKit`
 ==========================================================
@@ -472,24 +470,50 @@ Testing parent-child relationships
 
 The parent of an actor is always the actor that created it. At times this leads to
 a coupling between the two that may not be straightforward to test.
-Broadly, there are three approaches to improve testability of parent-child
-relationships:
+There are several approaches to improve testability of a child actor that
+needs to refer to its parent:
 
 1. when creating a child, pass an explicit reference to its parent
-2. when creating a parent, tell the parent how to create its child
+2. create the child with a ``TestProbe`` as parent
 3. create a fabricated parent when testing
+
+Conversely, a parent's binding to its child can be lessened as follows:
+
+4. when creating a parent, tell the parent how to create its child
 
 For example, the structure of the code you want to test may follow this pattern:
 
 .. includecode:: code/docs/testkit/ParentChildTest.java#test-example
 
-Using dependency-injection
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Introduce child to its parent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The first option is to avoid use of the :meth:`context.parent` function and create
 a child with a custom parent by passing an explicit reference to its parent instead.
 
 .. includecode:: code/docs/testkit/ParentChildTest.java#test-dependentchild
+
+Create the child using JavaTestKit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``JavaTestKit`` class can in fact create actors that will run with the test probe as parent.
+This will cause any messages the the child actor sends to `context().getParent()` to
+end up in the test probe.
+
+.. includecode:: code/docs/testkit/ParentChildTest.java#test-TestProbe-parent
+
+Using a fabricated parent
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you prefer to avoid modifying the child constructor you can
+create a fabricated parent in your test. This, however, does not enable you to test
+the parent actor in isolation.
+
+.. includecode:: code/docs/testkit/ParentChildTest.java#test-fabricated-parent-creator
+.. includecode:: code/docs/testkit/ParentChildTest.java#test-fabricated-parent
+
+Externalize child making from the parent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Alternatively, you can tell the parent how to create its child. There are two ways
 to do this: by giving it a :class:`Props` object or by giving it a function which takes care of creating the child actor:
@@ -505,19 +529,10 @@ And like this in your application code:
 
 .. includecode:: code/docs/testkit/ParentChildTest.java#child-maker-prod
 
-Using a fabricated parent
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you prefer to avoid modifying the parent or child constructor you can
-create a fabricated parent in your test. This, however, does not enable you to test
-the parent actor in isolation.
-
-.. includecode:: code/docs/testkit/ParentChildTest.java#test-fabricated-parent-creator
-.. includecode:: code/docs/testkit/ParentChildTest.java#test-fabricated-parent
 
 Which of these methods is the best depends on what is most important to test. The
 most generic option is to create the parent actor by passing it a function that is
-responsible for the Actor creation, but the fabricated parent is often sufficient.
+responsible for the Actor creation, but using TestProbe or having a fabricated parent is often sufficient.
 
 .. _Java-CallingThreadDispatcher:
 

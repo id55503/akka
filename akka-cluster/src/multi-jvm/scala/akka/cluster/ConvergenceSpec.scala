@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -95,11 +95,11 @@ abstract class ConvergenceSpec(multiNodeConfig: ConvergenceMultiNodeConfig)
 
       runOn(first, second, fourth) {
         for (n ← 1 to 5) {
-          awaitAssert(clusterView.members.size should ===(3))
+          awaitAssert(clusterView.members.size should ===(4))
           awaitSeenSameState(first, second, fourth)
           memberStatus(first) should ===(Some(MemberStatus.Up))
           memberStatus(second) should ===(Some(MemberStatus.Up))
-          memberStatus(fourth) should ===(None)
+          memberStatus(fourth) should ===(Some(MemberStatus.Joining))
           // wait and then check again
           Thread.sleep(1.second.dilated.toMillis)
         }

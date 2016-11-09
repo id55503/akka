@@ -1,14 +1,12 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor.dungeon
 
-import akka.actor.{ Terminated, InternalActorRef, ActorRef, ActorRefScope, ActorCell, Actor, Address }
-import akka.dispatch.sysmsg.{ DeathWatchNotification, Watch, Unwatch }
-import akka.event.Logging.{ Warning, Error, Debug }
-import scala.util.control.NonFatal
-import akka.actor.MinimalActorRef
+import akka.dispatch.sysmsg.{ Unwatch, Watch, DeathWatchNotification }
+import akka.event.Logging.{ Warning, Debug }
+import akka.actor.{ InternalActorRef, Address, Terminated, Actor, ActorRefScope, ActorCell, ActorRef, MinimalActorRef }
 import akka.event.AddressTerminatedTopic
 
 private[akka] trait DeathWatch { this: ActorCell ⇒
@@ -16,6 +14,8 @@ private[akka] trait DeathWatch { this: ActorCell ⇒
   private var watching: Set[ActorRef] = ActorCell.emptyActorRefSet
   private var watchedBy: Set[ActorRef] = ActorCell.emptyActorRefSet
   private var terminatedQueued: Set[ActorRef] = ActorCell.emptyActorRefSet
+
+  def isWatching(ref: ActorRef): Boolean = watching contains ref
 
   override final def watch(subject: ActorRef): ActorRef = subject match {
     case a: InternalActorRef ⇒
@@ -101,7 +101,11 @@ private[akka] trait DeathWatch { this: ActorCell ⇒
          */
         watchedBy foreach sendTerminated(ifLocal = false)
         watchedBy foreach sendTerminated(ifLocal = true)
-      } finally watchedBy = ActorCell.emptyActorRefSet
+      } finally {
+        maintainAddressTerminatedSubscription() {
+          watchedBy = ActorCell.emptyActorRefSet
+        }
+      }
     }
 
   protected def unwatchWatchedActors(actor: Actor): Unit =

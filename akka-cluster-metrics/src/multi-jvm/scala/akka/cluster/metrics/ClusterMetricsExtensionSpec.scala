@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.metrics
@@ -151,8 +151,7 @@ abstract class ClusterMetricsDisabledSpec extends MultiNodeSpec(ClusterMetricsDi
       // TODO ensure same contract
       //clusterView.clusterMetrics.size should ===(0)
       metricsView.clusterMetrics.size should ===(0)
-      cluster.subscribe(testActor, classOf[ClusterMetricsChanged])
-      expectMsgType[CurrentClusterState]
+      ClusterMetricsExtension(system).subscribe(testActor)
       expectNoMsg
       // TODO ensure same contract
       //clusterView.clusterMetrics.size should ===(0)

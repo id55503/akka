@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2015-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.dispatch
 
@@ -35,7 +35,6 @@ object StablePriorityDispatcherSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class StablePriorityDispatcherSpec extends AkkaSpec(StablePriorityDispatcherSpec.config) with DefaultTimeout {
 
   "A StablePriorityDispatcher" must {

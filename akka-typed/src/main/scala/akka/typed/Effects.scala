@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.typed
 
@@ -20,7 +20,7 @@ object Effect {
   @SerialVersionUID(1L) final case class Stopped(childName: String) extends Effect
   @SerialVersionUID(1L) final case class Watched[T](other: ActorRef[T]) extends Effect
   @SerialVersionUID(1L) final case class Unwatched[T](other: ActorRef[T]) extends Effect
-  @SerialVersionUID(1L) final case class ReceiveTimeoutSet(d: Duration) extends Effect
+  @SerialVersionUID(1L) final case class ReceiveTimeoutSet[T](d: Duration, msg: T) extends Effect
   @SerialVersionUID(1L) final case class Messaged[U](other: ActorRef[U], msg: U) extends Effect
   @SerialVersionUID(1L) final case class Scheduled[U](delay: FiniteDuration, target: ActorRef[U], msg: U) extends Effect
   @SerialVersionUID(1L) case object EmptyEffect extends Effect
@@ -30,8 +30,8 @@ object Effect {
  * An [[ActorContext]] for testing purposes that records the effects performed
  * on it and otherwise stubs them out like a [[StubbedActorContext]].
  */
-class EffectfulActorContext[T](_name: String, _props: Props[T], _system: ActorSystem[Nothing])
-  extends StubbedActorContext[T](_name, _props)(_system) {
+class EffectfulActorContext[T](_name: String, _initialBehavior: Behavior[T], _mailboxCapacity: Int, _system: ActorSystem[Nothing])
+  extends StubbedActorContext[T](_name, _mailboxCapacity, _system) {
   import akka.{ actor ⇒ a }
   import Effect._
 
@@ -49,31 +49,23 @@ class EffectfulActorContext[T](_name: String, _props: Props[T], _system: ActorSy
   }
   def hasEffects: Boolean = effectQueue.peek() != null
 
-  private var current = props.creator()
-  signal(PreStart)
+  private var current = _initialBehavior
+
+  if (Behavior.isAlive(current)) signal(PreStart)
 
   def currentBehavior: Behavior[T] = current
 
-  def run(msg: T): Unit = current = Behavior.canonicalize(this, current.message(this, msg), current)
-  def signal(signal: Signal): Unit = current = Behavior.canonicalize(this, current.management(this, signal), current)
+  def run(msg: T): Unit = current = Behavior.canonicalize(current.message(this, msg), current)
+  def signal(signal: Signal): Unit = current = Behavior.canonicalize(current.management(this, signal), current)
 
-  override def spawnAnonymous[U](props: Props[U]): ActorRef[U] = {
-    val ref = super.spawnAnonymous(props)
-    effectQueue.offer(Spawned(ref.untypedRef.path.name))
-    ref
-  }
-  override def spawn[U](props: Props[U], name: String): ActorRef[U] = {
-    effectQueue.offer(Spawned(name))
-    super.spawn(props, name)
-  }
-  override def actorOf(props: a.Props): a.ActorRef = {
-    val ref = super.actorOf(props)
+  override def spawnAnonymous[U](behavior: Behavior[U], deployment: DeploymentConfig = EmptyDeploymentConfig): ActorRef[U] = {
+    val ref = super.spawnAnonymous(behavior)
     effectQueue.offer(Spawned(ref.path.name))
     ref
   }
-  override def actorOf(props: a.Props, name: String): a.ActorRef = {
+  override def spawn[U](behavior: Behavior[U], name: String, deployment: DeploymentConfig = EmptyDeploymentConfig): ActorRef[U] = {
     effectQueue.offer(Spawned(name))
-    super.actorOf(props, name)
+    super.spawn(behavior, name)
   }
   override def stop(child: ActorRef[Nothing]): Boolean = {
     effectQueue.offer(Stopped(child.path.name))
@@ -87,17 +79,13 @@ class EffectfulActorContext[T](_name: String, _props: Props[T], _system: ActorSy
     effectQueue.offer(Unwatched(other))
     super.unwatch(other)
   }
-  override def watch(other: akka.actor.ActorRef): other.type = {
-    effectQueue.offer(Watched(ActorRef[Any](other)))
-    super.watch(other)
+  override def setReceiveTimeout(d: FiniteDuration, msg: T): Unit = {
+    effectQueue.offer(ReceiveTimeoutSet(d, msg))
+    super.setReceiveTimeout(d, msg)
   }
-  override def unwatch(other: akka.actor.ActorRef): other.type = {
-    effectQueue.offer(Unwatched(ActorRef[Any](other)))
-    super.unwatch(other)
-  }
-  override def setReceiveTimeout(d: Duration): Unit = {
-    effectQueue.offer(ReceiveTimeoutSet(d))
-    super.setReceiveTimeout(d)
+  override def cancelReceiveTimeout(): Unit = {
+    effectQueue.offer(ReceiveTimeoutSet(Duration.Undefined, null))
+    super.cancelReceiveTimeout()
   }
   override def schedule[U](delay: FiniteDuration, target: ActorRef[U], msg: U): a.Cancellable = {
     effectQueue.offer(Scheduled(delay, target, msg))

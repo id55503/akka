@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.testconductor
 
@@ -9,7 +9,6 @@ import org.jboss.netty.handler.codec.oneone.OneToOneEncoder
 import org.jboss.netty.channel.ChannelHandlerContext
 import org.jboss.netty.channel.Channel
 import akka.remote.testconductor.{ TestConductorProtocol ⇒ TCP }
-import com.google.protobuf.Message
 import akka.actor.Address
 import org.jboss.netty.handler.codec.oneone.OneToOneDecoder
 import scala.concurrent.duration._
@@ -134,7 +133,8 @@ private[akka] class MsgDecoder extends OneToOneDecoder {
           case BarrierOp.Succeeded ⇒ BarrierResult(barrier.getName, true)
           case BarrierOp.Failed    ⇒ BarrierResult(barrier.getName, false)
           case BarrierOp.Fail      ⇒ FailBarrier(barrier.getName)
-          case BarrierOp.Enter ⇒ EnterBarrier(barrier.getName,
+          case BarrierOp.Enter ⇒ EnterBarrier(
+            barrier.getName,
             if (barrier.hasTimeout) Option(Duration.fromNanos(barrier.getTimeout)) else None)
         }
       } else if (w.hasFailure) {

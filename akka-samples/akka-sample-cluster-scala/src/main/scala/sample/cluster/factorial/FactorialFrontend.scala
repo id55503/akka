@@ -9,6 +9,8 @@ import akka.actor.Props
 import akka.cluster.Cluster
 import akka.routing.FromConfig
 import akka.actor.ReceiveTimeout
+import scala.util.Try
+import scala.concurrent.Await
 
 //#frontend
 class FactorialFrontend(upToN: Int, repeat: Boolean) extends Actor with ActorLogging {
@@ -59,8 +61,22 @@ object FactorialFrontend {
     //#registerOnUp
 
     //#registerOnRemoved
-    Cluster(system).registerOnMemberRemoved{
+    Cluster(system).registerOnMemberRemoved {
+      // exit JVM when ActorSystem has been terminated
+      system.registerOnTermination(System.exit(0))
+      // shut down ActorSystem
       system.terminate()
+
+      // In case ActorSystem shutdown takes longer than 10 seconds,
+      // exit the JVM forcefully anyway.
+      // We must spawn a separate thread to not block current thread,
+      // since that would have blocked the shutdown of the ActorSystem.
+      new Thread {
+        override def run(): Unit = {
+          if (Try(Await.ready(system.whenTerminated, 10.seconds)).isFailure)
+            System.exit(-1)
+        }
+      }.start()
     }
     //#registerOnRemoved
 

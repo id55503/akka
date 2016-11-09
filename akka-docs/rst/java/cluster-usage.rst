@@ -1,9 +1,9 @@
 
 .. _cluster_usage_java:
 
-######################
- Cluster Usage
-######################
+#############
+Cluster Usage
+#############
 
 For introduction to the Akka Cluster concepts please see :ref:`cluster`.
 
@@ -28,11 +28,15 @@ It joins the cluster and an actor subscribes to cluster membership events and lo
 
 The ``application.conf`` configuration looks like this:
 
-.. includecode:: ../../../akka-samples/akka-sample-cluster-java/src/main/resources/application.conf
+.. includecode:: ../../../akka-samples/akka-sample-cluster-java/src/main/resources/application.conf#snippet
 
 To enable cluster capabilities in your Akka project you should, at a minimum, add the :ref:`remoting-java`
-settings, but with ``akka.cluster.ClusterActorRefProvider``.
+settings, but with ``cluster``.
 The ``akka.cluster.seed-nodes`` should normally also be added to your ``application.conf`` file.
+
+.. note::
+  If you are running Akka in a Docker container or the nodes for some other reason have separate internal and
+  external ip addresses you must configure remoting according to :ref:`remote-configuration-nat-java`
 
 The seed nodes are configured contact points for initial, automatic, join of the cluster.
 
@@ -47,8 +51,8 @@ An actor that uses the cluster extension may look like this:
 The actor registers itself as subscriber of certain cluster events. It receives events corresponding to the current state
 of the cluster when the subscription starts and then it receives events for changes that happen in the cluster.
 
-The easiest way to run this example yourself is to download `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_
-and open the tutorial named `Akka Cluster Samples with Java <http://www.typesafe.com/activator/template/akka-sample-cluster-java>`_.
+The easiest way to run this example yourself is to download `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_
+and open the tutorial named `Akka Cluster Samples with Java <http://www.lightbend.com/activator/template/akka-sample-cluster-java>`_.
 It contains instructions of how to run the ``SimpleClusterApp``.
 
 Joining to Seed Nodes
@@ -63,7 +67,7 @@ it retries this procedure until successful or shutdown.
 You define the seed nodes in the :ref:`cluster_configuration_java` file (application.conf)::
 
   akka.cluster.seed-nodes = [
-    "akka.tcp://ClusterSystem@host1:2552", 
+    "akka.tcp://ClusterSystem@host1:2552",
     "akka.tcp://ClusterSystem@host2:2552"]
 
 This can also be defined as Java system properties when starting the JVM using the following syntax::
@@ -73,11 +77,11 @@ This can also be defined as Java system properties when starting the JVM using t
 
 The seed nodes can be started in any order and it is not necessary to have all
 seed nodes running, but the node configured as the first element in the ``seed-nodes``
-configuration list must be started when initially starting a cluster, otherwise the 
-other seed-nodes will not become initialized and no other node can join the cluster. 
+configuration list must be started when initially starting a cluster, otherwise the
+other seed-nodes will not become initialized and no other node can join the cluster.
 The reason for the special first seed node is to avoid forming separated islands when
 starting from an empty cluster.
-It is quickest to start all configured seed nodes at the same time (order doesn't matter), 
+It is quickest to start all configured seed nodes at the same time (order doesn't matter),
 otherwise it can take up to the configured ``seed-node-timeout`` until the nodes
 can join.
 
@@ -88,7 +92,7 @@ seed nodes in the existing cluster.
 If you don't configure seed nodes you need to join the cluster programmatically or manually.
 
 Manual joining can be performed by using ref:`cluster_jmx_java` or :ref:`cluster_command_line_java`.
-Joining programatically can be performed with ``Cluster.get(system).join``. Unsuccessful join attempts are 
+Joining programmatically can be performed with ``Cluster.get(system).join``. Unsuccessful join attempts are
 automatically retried after the time period defined in configuration property ``retry-unsuccessful-join-after``.
 Retries can be disabled by setting the property to ``off``.
 
@@ -101,9 +105,9 @@ which is attractive when dynamically discovering other nodes at startup by using
 When using ``joinSeedNodes`` you should not include the node itself except for the node that is
 supposed to be the first seed node, and that should be placed first in parameter to ``joinSeedNodes``.
 
-Unsuccessful attempts to contact seed nodes are automatically retried after the time period defined in 
+Unsuccessful attempts to contact seed nodes are automatically retried after the time period defined in
 configuration property ``seed-node-timeout``. Unsuccessful attempt to join a specific seed node is
-automatically retried after the configured ``retry-unsuccessful-join-after`. Retrying means that it
+automatically retried after the configured ``retry-unsuccessful-join-after``. Retrying means that it
 tries to contact all seed nodes and then joins the node that answers first. The first node in the list
 of seed nodes will join itself if it cannot contact any of the other seed nodes within the
 configured ``seed-node-timeout``.
@@ -112,39 +116,59 @@ An actor system can only join a cluster once. Additional attempts will be ignore
 When it has successfully joined it must be restarted to be able to join another
 cluster or to join the same cluster again. It can use the same host name and port
 after the restart, when it come up as new incarnation of existing member in the cluster,
-trying to join in ,then the existing one will be removed from the cluster and then it will be allowed to join.
+trying to join in, then the existing one will be removed from the cluster and then it will
+be allowed to join.
 
+.. note::
+
+  The name of the ``ActorSystem`` must be the same for all members of a cluster. The name is given
+  when you start the ``ActorSystem``.
 
 .. _automatic-vs-manual-downing-java:
 
-Automatic vs. Manual Downing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Downing
+^^^^^^^
 
 When a member is considered by the failure detector to be unreachable the
 leader is not allowed to perform its duties, such as changing status of
 new joining members to 'Up'. The node must first become reachable again, or the
 status of the unreachable member must be changed to 'Down'. Changing status to 'Down'
-can be performed automatically or manually. By default it must be done manually, using 
+can be performed automatically or manually. By default it must be done manually, using
 :ref:`cluster_jmx_java` or :ref:`cluster_command_line_java`.
 
-It can also be performed programatically with ``Cluster.get(system).down(address)``.
+It can also be performed programmatically with ``Cluster.get(system).down(address)``.
 
-You can enable automatic downing with configuration::
+A pre-packaged solution for the downing problem is provided by
+`Split Brain Resolver <http://doc.akka.io/docs/akka/akka-commercial-addons-1.0/java/split-brain-resolver.html>`_,
+which is part of the `Lightbend Reactive Platform <http://www.lightbend.com/platform>`_. 
+If you don’t use RP, you should anyway carefully read the `documentation <http://doc.akka.io/docs/akka/akka-commercial-addons-1.0/java/split-brain-resolver.html>`_
+of the Split Brain Resolver and make sure that the solution you are using handles the concerns
+described there.
+
+Auto-downing (DO NOT USE)
+-------------------------
+
+There is an atomatic downing feature that you should not use in production. For testing purpose you can enable it with configuration::
 
       akka.cluster.auto-down-unreachable-after = 120s
 
-This means that the cluster leader member will change the ``unreachable`` node 
+This means that the cluster leader member will change the ``unreachable`` node
 status to ``down`` automatically after the configured time of unreachability.
 
-Be aware of that using auto-down implies that two separate clusters will
-automatically be formed in case of network partition. That might be
-desired by some applications but not by others.
+This is a naïve approach to remove unreachable nodes from the cluster membership. It
+works great for crashes and short transient network partitions, but not for long network
+partitions. Both sides of the network partition will see the other side as unreachable
+and after a while remove it from its cluster membership. Since this happens on both
+sides the result is that two separate disconnected clusters have been created. This
+can also happen because of long GC pauses or system overload.
 
-.. note:: If you have *auto-down* enabled and the failure detector triggers, you
-   can over time end up with a lot of single node clusters if you don't put
-   measures in place to shut down nodes that have become ``unreachable``. This
-   follows from the fact that the ``unreachable`` node will likely see the rest of
-   the cluster as ``unreachable``, become its own leader and form its own cluster.
+.. warning::
+
+  We recommend against using the auto-down feature of Akka Cluster in production.
+  This is crucial for correct behavior if you use :ref:`cluster-singleton-java` or
+  :ref:`cluster_sharding_java`, especially together with Akka :ref:`persistence-java`.
+  For Akka Persistence with Cluster Sharding it can result in corrupt data in case
+  of network partitions.
 
 Leaving
 ^^^^^^^
@@ -157,14 +181,51 @@ above.
 
 A more graceful exit can be performed if you tell the cluster that a node shall leave.
 This can be performed using :ref:`cluster_jmx_java` or :ref:`cluster_command_line_java`.
-It can also be performed programatically with ``Cluster.get(system).leave(address)``. 
+It can also be performed programmatically with:
+
+.. includecode:: code/docs/cluster/ClusterDocTest.java#leave
 
 Note that this command can be issued to any member in the cluster, not necessarily the
-one that is leaving. The cluster extension, but not the actor system or JVM, of the 
-leaving member will be shutdown after the leader has changed status of the member to 
-`Exiting`. Thereafter the member will be removed from the cluster. Normally this is handled 
+one that is leaving. The cluster extension, but not the actor system or JVM, of the
+leaving member will be shutdown after the leader has changed status of the member to
+`Exiting`. Thereafter the member will be removed from the cluster. Normally this is handled
 automatically, but in case of network failures during this process it might still be necessary
 to set the node’s status to ``Down`` in order to complete the removal.
+
+.. _weakly_up_java:
+
+WeaklyUp Members
+^^^^^^^^^^^^^^^^
+
+If a node is ``unreachable`` then gossip convergence is not possible and therefore any
+``leader`` actions are also not possible. However, we still might want new nodes to join
+the cluster in this scenario.
+
+.. warning::
+
+  The WeaklyUp feature is marked as **“experimental”** as of its introduction in Akka 2.4.0. We will continue to
+  improve this feature based on our users’ feedback, which implies that while we try to keep incompatible
+  changes to a minimum the binary compatibility guarantee for maintenance releases does not apply this feature.
+
+This feature is disabled by default. With a configuration option you can allow this behavior::
+
+    akka.cluster.allow-weakly-up-members = on
+
+When ``allow-weakly-up-members`` is enabled and there is no gossip convergence,
+``Joining`` members will be promoted to ``WeaklyUp`` and they will become part of the
+cluster. Once gossip convergence is reached, the leader will move ``WeaklyUp``
+members to ``Up``.
+
+You can subscribe to the ``WeaklyUp`` membership event to make use of the members that are
+in this state, but you should be aware of that members on the other side of a network partition
+have no knowledge about the existence of the new members. You should for example not count
+``WeaklyUp`` members in quorum decisions.
+
+.. warning::
+
+  This feature is only available from Akka 2.4.0 and cannot be used if some of your
+  cluster members are running an older version of Akka.
+
 
 .. _cluster_subscriber_java:
 
@@ -180,8 +241,8 @@ A snapshot of the full state, ``akka.cluster.ClusterEvent.CurrentClusterState``,
 as the first message, followed by events for incremental updates.
 
 Note that you may receive an empty ``CurrentClusterState``, containing no members,
-if you start the subscription before the initial join procedure has completed. 
-This is expected behavior. When the node has been accepted in the cluster you will 
+if you start the subscription before the initial join procedure has completed.
+This is expected behavior. When the node has been accepted in the cluster you will
 receive ``MemberUp`` for that node, and other nodes.
 
 If you find it inconvenient to handle the ``CurrentClusterState`` you can use
@@ -195,6 +256,7 @@ to the current state and it is not the full history of all changes that actually
 
 The events to track the life-cycle of members are:
 
+* ``ClusterEvent.MemberJoined`` - A new member has joined the cluster and its status has been changed to ``Joining``.
 * ``ClusterEvent.MemberUp`` - A new member has joined the cluster and its status has been changed to ``Up``.
 * ``ClusterEvent.MemberExited`` - A member is leaving the cluster and its status has been changed to ``Exiting``
   Note that the node might already have been shutdown when this event is published on another node.
@@ -210,7 +272,7 @@ for details about the events.
 
 Instead of subscribing to cluster events it can sometimes be convenient to only get the full membership state with
 ``Cluster.get(system).state()``. Note that this state is not necessarily in sync with the events published to a
-cluster subscription. 
+cluster subscription.
 
 Worker Dial-in Example
 ----------------------
@@ -244,11 +306,11 @@ Note that the ``TransformationFrontend`` actor watch the registered backend
 to be able to remove it from its list of available backend workers.
 Death watch uses the cluster failure detector for nodes in the cluster, i.e. it detects
 network failures and JVM crashes, in addition to graceful termination of watched
-actor. Death watch generates the ``Terminated`` message to the watching actor when the 
+actor. Death watch generates the ``Terminated`` message to the watching actor when the
 unreachable cluster node has been downed and removed.
 
-The `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_ tutorial named 
-`Akka Cluster Samples with Java <http://www.typesafe.com/activator/template/akka-sample-cluster-java>`_.
+The `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_ tutorial named
+`Akka Cluster Samples with Java <http://www.lightbend.com/activator/template/akka-sample-cluster-java>`_.
 contains the full source code and instructions of how to run the **Worker Dial-in Example**.
 
 Node Roles
@@ -263,11 +325,13 @@ and it is typically defined in the start script as a system property or environm
 
 The roles of the nodes is part of the membership information in ``MemberEvent`` that you can subscribe to.
 
+.. _min-members_java:
+
 How To Startup when Cluster Size Reached
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A common use case is to start actors after the cluster has been initialized,
-members have joined, and the cluster has reached a certain size. 
+members have joined, and the cluster has reached a certain size.
 
 With a configuration option you can define required number of members
 before the leader changes member status of 'Joining' members to 'Up'.
@@ -279,7 +343,7 @@ before the leader changes member status of 'Joining' members to 'Up'.
 
 .. includecode:: ../../../akka-samples/akka-sample-cluster-java/src/main/resources/factorial.conf#role-min-nr-of-members
 
-You can start the actors in a ``registerOnMemberUp`` callback, which will 
+You can start the actors in a ``registerOnMemberUp`` callback, which will
 be invoked when the current member status is changed to 'Up', i.e. the cluster
 has at least the defined number of members.
 
@@ -287,15 +351,20 @@ has at least the defined number of members.
 
 This callback can be used for other things than starting actors.
 
+How To Cleanup when Member is Removed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 You can do some clean up in a ``registerOnMemberRemoved`` callback, which will
-be invoked when the current member status is changed to 'Removed' or the cluster have been shutdown,i.e.
-terminate the actor system.
+be invoked when the current member status is changed to 'Removed' or the cluster have been shutdown.
+
+For example, this is how to shut down the ``ActorSystem`` and thereafter exit the JVM:
 
 .. includecode:: ../../../akka-samples/akka-sample-cluster-java/src/main/java/sample/cluster/factorial/FactorialFrontendMain.java#registerOnRemoved
 
-.. note:: Register a OnMemberRemoved callback on a cluster that have been shutdown, the callback will be invoked immediately on
+.. note::
+   Register a OnMemberRemoved callback on a cluster that have been shutdown, the callback will be invoked immediately on
    the caller thread, otherwise it will be invoked later when the current member status changed to 'Removed'. You may
-   want to install some cleanup handling after the cluster was started up,but the cluster might already be shutting
+   want to install some cleanup handling after the cluster was started up, but the cluster might already be shutting
    down when you installing, and depending on the race is not healthy.
 
 Cluster Singleton
@@ -304,9 +373,9 @@ Cluster Singleton
 For some use cases it is convenient and sometimes also mandatory to ensure that
 you have exactly one actor of a certain type running somewhere in the cluster.
 
-This can be implemented by subscribing to member events, but there are several corner 
-cases to consider. Therefore, this specific use case is made easily accessible by the 
-:ref:`cluster-singleton` in the contrib module.
+This can be implemented by subscribing to member events, but there are several corner
+cases to consider. Therefore, this specific use case is made easily accessible by the
+:ref:`cluster-singleton-java`.
 
 Cluster Sharding
 ^^^^^^^^^^^^^^^^
@@ -315,7 +384,7 @@ Distributes actors across several nodes in the cluster and supports interaction
 with the actors using their logical identifier, but without having to care about
 their physical location in the cluster.
 
-See :ref:`cluster-sharding` in the contrib module.
+See :ref:`cluster_sharding_java`.
 
 Distributed Publish Subscribe
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -324,7 +393,7 @@ Publish-subscribe messaging between actors in the cluster, and point-to-point me
 using the logical path of the actors, i.e. the sender does not have to know on which
 node the destination actor is running.
 
-See :ref:`distributed-pub-sub` in the contrib module.
+See :ref:`distributed-pub-sub-java`.
 
 Cluster Client
 ^^^^^^^^^^^^^^
@@ -333,7 +402,15 @@ Communication from an actor system that is not part of the cluster to actors run
 somewhere in the cluster. The client does not have to know on which node the destination
 actor is running.
 
-See :ref:`cluster-client` in the contrib module.
+See :ref:`cluster-client-java`.
+
+Distributed Data
+^^^^^^^^^^^^^^^^
+
+*Akka Distributed Data* is useful when you need to share data between nodes in an
+Akka Cluster. The data is accessed with an actor providing a key-value store like API.
+
+See :ref:`distributed_data_java`.
 
 Failure Detector
 ^^^^^^^^^^^^^^^^
@@ -345,19 +422,19 @@ mark a node ``unreachable`` to have the rest of the cluster mark that node ``unr
 
 The failure detector will also detect if the node becomes ``reachable`` again. When
 all nodes that monitored the ``unreachable`` node detects it as ``reachable`` again
-the cluster, after gossip dissemination, will consider it as ``reachable``. 
+the cluster, after gossip dissemination, will consider it as ``reachable``.
 
 If system messages cannot be delivered to a node it will be quarantined and then it
 cannot come back from ``unreachable``. This can happen if the there are too many
-unacknowledged system messages (e.g. watch, Terminated, remote actor deployment, 
+unacknowledged system messages (e.g. watch, Terminated, remote actor deployment,
 failures of actors supervised by remote parent). Then the node needs to be moved
-to the ``down`` or ``removed`` states and the actor system must be restarted before
-it can join the cluster again.
+to the ``down`` or ``removed`` states and the actor system of the quarantined node
+must be restarted before it can join the cluster again.
 
 The nodes in the cluster monitor each other by sending heartbeats to detect if a node is
 unreachable from the rest of the cluster. The heartbeat arrival times is interpreted
 by an implementation of
-`The Phi Accrual Failure Detector <http://ddg.jaist.ac.jp/pub/HDY+04.pdf>`_.
+`The Phi Accrual Failure Detector <http://www.jaist.ac.jp/~defago/files/pdf/IS_RR_2004_010.pdf>`_.
 
 The suspicion level of failure is given by a value called *phi*.
 The basic idea of the phi failure detector is to express the value of *phi* on a scale that
@@ -404,10 +481,10 @@ This is how the curve looks like for ``acceptable-heartbeat-pause`` configured t
 
 Death watch uses the cluster failure detector for nodes in the cluster, i.e. it detects
 network failures and JVM crashes, in addition to graceful termination of watched
-actor. Death watch generates the ``Terminated`` message to the watching actor when the 
+actor. Death watch generates the ``Terminated`` message to the watching actor when the
 unreachable cluster node has been downed and removed.
 
-If you encounter suspicious false positives when the system is under load you should 
+If you encounter suspicious false positives when the system is under load you should
 define a separate dispatcher for the cluster actors as described in :ref:`cluster_dispatcher_java`.
 
 Cluster Aware Routers
@@ -417,22 +494,25 @@ All :ref:`routers <routing-java>` can be made aware of member nodes in the clust
 deploying new routees or looking up routees on nodes in the cluster.
 When a node becomes unreachable or leaves the cluster the routees of that node are
 automatically unregistered from the router. When new nodes join the cluster additional
-routees are added to the router, according to the configuration. Routees are also added 
+routees are added to the router, according to the configuration. Routees are also added
 when a node becomes reachable again, after having been unreachable.
 
-There are two distinct types of routers. 
+Cluster aware routers make use of members with status :ref:`WeaklyUp <weakly_up_java>` if that feature
+is enabled.
 
-* **Group - router that sends messages to the specified path using actor selection** 
-  The routees can be shared between routers running on different nodes in the cluster. 
-  One example of a use case for this type of router is a service running on some backend 
+There are two distinct types of routers.
+
+* **Group - router that sends messages to the specified path using actor selection**
+  The routees can be shared between routers running on different nodes in the cluster.
+  One example of a use case for this type of router is a service running on some backend
   nodes in the cluster and used by routers running on front-end nodes in the cluster.
 
-* **Pool - router that creates routees as child actors and deploys them on remote nodes.** 
+* **Pool - router that creates routees as child actors and deploys them on remote nodes.**
   Each router will have its own routee instances. For example, if you start a router
   on 3 nodes in a 10 nodes cluster you will have 30 routee actors in total if the router is
   configured to use one instance per node. The routees created by the different routers
   will not be shared between the routers. One example of a use case for this type of router
-  is a single master that coordinate jobs and delegates the actual work to routees running 
+  is a single master that coordinate jobs and delegates the actual work to routees running
   on other nodes in the cluster.
 
 Router with Group of Routees
@@ -447,12 +527,14 @@ That is not done by the router. The configuration for a group looks like this:
   The routee actors should be started as early as possible when starting the actor system, because
   the router will try to use them as soon as the member status is changed to 'Up'.
 
-The relative actor paths defined in ``routees.paths`` are used as for selecting the actors to which the messages will be forwarded to by the router.
+The actor paths without address information that are defined in ``routees.paths`` are used for selecting the
+actors to which the messages will be forwarded to by the router.
 Messages will be forwarded to the routees using :ref:`ActorSelection <actorSelection-java>`, so the same delivery semantics should be expected.
 It is possible to limit the lookup of routees to member nodes tagged with a certain role by specifying ``use-role``.
 
-``nr-of-instances`` defines total number of routees in the cluster. Setting ``nr-of-instances`` 
-to a high value will result in new routees added to the router when nodes join the cluster.
+``max-total-nr-of-instances`` defines total number of routees in the cluster. By default ``max-total-nr-of-instances``
+is set to a high value (10000) that will result in new routees added to the router when nodes join the cluster.
+Set it to a lower value if you want to limit total number of routees.
 
 The same type of router could also have been defined in code:
 
@@ -463,7 +545,7 @@ See :ref:`cluster_configuration_java` section for further descriptions of the se
 Router Example with Group of Routees
 ------------------------------------
 
-Let's take a look at how to use a cluster aware router with a group of routees, 
+Let's take a look at how to use a cluster aware router with a group of routees,
 i.e. router sending to the paths of the routees.
 
 The example application provides a service to calculate statistics for a text.
@@ -497,8 +579,8 @@ The router is configured with ``routees.paths``:
 This means that user requests can be sent to ``StatsService`` on any node and it will use
 ``StatsWorker`` on all nodes.
 
-The `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_ tutorial named 
-`Akka Cluster Samples with Java <http://www.typesafe.com/activator/template/akka-sample-cluster-java>`_.
+The `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_ tutorial named
+`Akka Cluster Samples with Java <http://www.lightbend.com/activator/template/akka-sample-cluster-java>`_.
 contains the full source code and instructions of how to run the **Router Example with Group of Routees**.
 
 Router with Pool of Remote Deployed Routees
@@ -512,10 +594,10 @@ the configuration for a router looks like this:
 It is possible to limit the deployment of routees to member nodes tagged with a certain role by
 specifying ``use-role``.
 
-``nr-of-instances`` defines total number of routees in the cluster, but the number of routees
-per node, ``max-nr-of-instances-per-node``, will not be exceeded. Setting ``nr-of-instances``
-to a high value will result in creating and deploying additional routees when new nodes join
-the cluster.
+``max-total-nr-of-instances`` defines total number of routees in the cluster, but the number of routees
+per node, ``max-nr-of-instances-per-node``, will not be exceeded. By default ``max-total-nr-of-instances``
+is set to a high value (10000) that will result in new routees added to the router when nodes join the cluster.
+Set it to a lower value if you want to limit total number of routees.
 
 The same type of router could also have been defined in code:
 
@@ -527,7 +609,7 @@ Router Example with Pool of Remote Deployed Routees
 ---------------------------------------------------
 
 Let's take a look at how to use a cluster aware router on single master node that creates
-and deploys workers. To keep track of a single master we use the :ref:`cluster-singleton` 
+and deploys workers. To keep track of a single master we use the :ref:`cluster-singleton-java`
 in the contrib module. The ``ClusterSingletonManager`` is started on each node.
 
 .. includecode:: ../../../akka-samples/akka-sample-cluster-java/src/main/java/sample/cluster/stats/StatsSampleOneMasterMain.java#create-singleton-manager
@@ -544,8 +626,8 @@ All nodes start ``ClusterSingletonProxy`` and the ``ClusterSingletonManager``. T
 
 .. includecode:: ../../../akka-samples/akka-sample-cluster-java/src/main/resources/stats2.conf#config-router-deploy
 
-The `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_ tutorial named 
-`Akka Cluster Samples with Java <http://www.typesafe.com/activator/template/akka-sample-cluster-java>`_.
+The `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_ tutorial named
+`Akka Cluster Samples with Java <http://www.lightbend.com/activator/template/akka-sample-cluster-java>`_.
 contains the full source code and instructions of how to run the **Router Example with Pool of Remote Deployed Routees**.
 
 Cluster Metrics
@@ -599,7 +681,7 @@ Run it without parameters to see instructions about how to use the script::
                 is-singleton - Checks if the cluster is a singleton cluster (single
                                node cluster)
                 is-available - Checks if the member node is available
-  Where the <node-url> should be on the format of 
+  Where the <node-url> should be on the format of
     'akka.<protocol>://<actor-system-name>@<hostname>:<port>'
 
   Examples: bin/akka-cluster localhost 9999 is-available
@@ -621,7 +703,7 @@ Example of system properties to enable remote monitoring and management::
 Configuration
 ^^^^^^^^^^^^^
 
-There are several configuration properties for the cluster. We refer to the 
+There are several configuration properties for the cluster. We refer to the
 :ref:`reference configuration <config-akka-cluster>` for more information.
 
 Cluster Info Logging
@@ -652,3 +734,13 @@ For this purpose you can define a separate dispatcher to be used for the cluster
       parallelism-max = 4
     }
   }
+
+.. note::
+    Normally it should not be necessary to configure a separate dispatcher for the Cluster.
+    The default-dispatcher should be sufficient for performing the Cluster tasks, i.e. ``akka.cluster.use-dispatcher``
+    should not be changed. If you have Cluster related problems when using the default-dispatcher that is typically an
+    indication that you are running blocking or CPU intensive actors/tasks on the default-dispatcher.
+    Use dedicated dispatchers for such actors/tasks instead of running them on the default-dispatcher,
+    because that may starve system internal tasks.
+    Related config properties: ``akka.cluster.use-dispatcher = akka.cluster.cluster-dispatcher``.
+    Corresponding default values: ``akka.cluster.use-dispatcher =``.

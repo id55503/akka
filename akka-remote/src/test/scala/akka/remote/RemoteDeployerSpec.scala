@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -11,7 +11,7 @@ import akka.ConfigurationException
 
 object RemoteDeployerSpec {
   val deployerConf = ConfigFactory.parseString("""
-      akka.actor.provider = "akka.remote.RemoteActorRefProvider"
+      akka.actor.provider = remote
       akka.actor.deployment {
         /service2 {
           router = round-robin-pool
@@ -29,7 +29,6 @@ object RemoteDeployerSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class RemoteDeployerSpec extends AkkaSpec(RemoteDeployerSpec.deployerConf) {
 
   "A RemoteDeployer" must {

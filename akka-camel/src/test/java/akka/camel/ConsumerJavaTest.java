@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.camel;
@@ -7,6 +7,7 @@ package akka.camel;
 import akka.testkit.AkkaJUnitActorSystemResource;
 import akka.testkit.AkkaSpec;
 import org.junit.ClassRule;
+import org.scalatest.junit.JUnitSuite;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
 import akka.actor.ActorSystem;
@@ -19,7 +20,7 @@ import org.junit.Test;
 import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.*;
 
-public class ConsumerJavaTest {
+public class ConsumerJavaTest extends JUnitSuite {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource =

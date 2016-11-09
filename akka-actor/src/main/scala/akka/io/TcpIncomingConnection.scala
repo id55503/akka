@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.io
@@ -15,15 +15,16 @@ import akka.io.Inet.SocketOption
  *
  * INTERNAL API
  */
-private[io] class TcpIncomingConnection(_tcp: TcpExt,
-                                        _channel: SocketChannel,
-                                        registry: ChannelRegistry,
-                                        bindHandler: ActorRef,
-                                        options: immutable.Traversable[SocketOption],
-                                        readThrottling: Boolean)
+private[io] class TcpIncomingConnection(
+  _tcp:           TcpExt,
+  _channel:       SocketChannel,
+  registry:       ChannelRegistry,
+  bindHandler:    ActorRef,
+  options:        immutable.Traversable[SocketOption],
+  readThrottling: Boolean)
   extends TcpConnection(_tcp, _channel, readThrottling) {
 
-  context.watch(bindHandler) // sign death pact
+  signDeathPact(bindHandler)
 
   registry.register(channel, initialOps = 0)
 

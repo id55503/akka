@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -49,6 +49,7 @@ abstract class LeaderDowningAllOtherNodesSpec
     "remove all shutdown nodes" taggedAs LongRunningTest in {
       val others = roles.drop(1)
       val shutdownAddresses = others.map(address).toSet
+      enterBarrier("before-all-other-shutdown")
       runOn(first) {
         for (node ← others)
           testConductor.exit(node, 0).await

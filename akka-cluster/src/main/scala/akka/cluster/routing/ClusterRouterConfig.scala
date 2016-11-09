@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.routing
 
@@ -32,7 +32,7 @@ import scala.collection.immutable
 object ClusterRouterGroupSettings {
   def fromConfig(config: Config): ClusterRouterGroupSettings =
     ClusterRouterGroupSettings(
-      totalInstances = config.getInt("nr-of-instances"),
+      totalInstances = ClusterRouterSettingsBase.getMaxTotalNrOfInstances(config),
       routeesPaths = immutableSeq(config.getStringList("routees.paths")),
       allowLocalRoutees = config.getBoolean("cluster.allow-local-routees"),
       useRole = ClusterRouterSettingsBase.useRoleOption(config.getString("cluster.use-role")))
@@ -43,10 +43,10 @@ object ClusterRouterGroupSettings {
  */
 @SerialVersionUID(1L)
 final case class ClusterRouterGroupSettings(
-  totalInstances: Int,
-  routeesPaths: immutable.Seq[String],
+  totalInstances:    Int,
+  routeesPaths:      immutable.Seq[String],
   allowLocalRoutees: Boolean,
-  useRole: Option[String]) extends ClusterRouterSettingsBase {
+  useRole:           Option[String]) extends ClusterRouterSettingsBase {
 
   /**
    * Java API
@@ -61,7 +61,7 @@ final case class ClusterRouterGroupSettings(
   routeesPaths.foreach(p ⇒ p match {
     case RelativeActorPath(elements) ⇒ // good
     case _ ⇒
-      throw new IllegalArgumentException(s"routeesPaths [$p] is not a valid relative actor path")
+      throw new IllegalArgumentException(s"routeesPaths [$p] is not a valid actor path without address information")
   })
 
 }
@@ -69,7 +69,7 @@ final case class ClusterRouterGroupSettings(
 object ClusterRouterPoolSettings {
   def fromConfig(config: Config): ClusterRouterPoolSettings =
     ClusterRouterPoolSettings(
-      totalInstances = config.getInt("nr-of-instances"),
+      totalInstances = ClusterRouterSettingsBase.getMaxTotalNrOfInstances(config),
       maxInstancesPerNode = config.getInt("cluster.max-nr-of-instances-per-node"),
       allowLocalRoutees = config.getBoolean("cluster.allow-local-routees"),
       useRole = ClusterRouterSettingsBase.useRoleOption(config.getString("cluster.use-role")))
@@ -82,10 +82,10 @@ object ClusterRouterPoolSettings {
  */
 @SerialVersionUID(1L)
 final case class ClusterRouterPoolSettings(
-  totalInstances: Int,
+  totalInstances:      Int,
   maxInstancesPerNode: Int,
-  allowLocalRoutees: Boolean,
-  useRole: Option[String]) extends ClusterRouterSettingsBase {
+  allowLocalRoutees:   Boolean,
+  useRole:             Option[String]) extends ClusterRouterSettingsBase {
 
   /**
    * Java API
@@ -105,6 +105,18 @@ private[akka] object ClusterRouterSettingsBase {
     case null | "" ⇒ None
     case _         ⇒ Some(role)
   }
+
+  /**
+   * For backwards compatibility reasons, nr-of-instances
+   * has the same purpose as max-total-nr-of-instances for cluster
+   * aware routers and nr-of-instances (if defined by user) takes
+   * precedence over max-total-nr-of-instances.
+   */
+  def getMaxTotalNrOfInstances(config: Config): Int =
+    config.getInt("nr-of-instances") match {
+      case 1 | 0 ⇒ config.getInt("cluster.max-nr-of-instances-per-node")
+      case other ⇒ other
+    }
 }
 
 /**
@@ -128,7 +140,14 @@ private[akka] trait ClusterRouterSettingsBase {
 @SerialVersionUID(1L)
 final case class ClusterRouterGroup(local: Group, settings: ClusterRouterGroupSettings) extends Group with ClusterRouterConfigBase {
 
-  override def paths: immutable.Iterable[String] = if (settings.allowLocalRoutees) settings.routeesPaths else Nil
+  override def paths(system: ActorSystem): immutable.Iterable[String] =
+    if (settings.allowLocalRoutees && settings.useRole.isDefined) {
+      if (Cluster(system).selfRoles.contains(settings.useRole.get)) {
+        settings.routeesPaths
+      } else Nil
+    } else if (settings.allowLocalRoutees && settings.useRole.isEmpty) {
+      settings.routeesPaths
+    } else Nil
 
   /**
    * INTERNAL API
@@ -257,9 +276,9 @@ private[akka] class ClusterRouterPoolActor(
     } else {
       // find the node with least routees
       val numberOfRouteesPerNode: Map[Address, Int] =
-        currentRoutees.foldLeft(currentNodes.map(_ -> 0).toMap.withDefaultValue(0)) { (acc, x) ⇒
+        currentRoutees.foldLeft(currentNodes.map(_ → 0).toMap.withDefaultValue(0)) { (acc, x) ⇒
           val address = fullAddress(x)
-          acc + (address -> (acc(address) + 1))
+          acc + (address → (acc(address) + 1))
         }
 
       val (address, count) = numberOfRouteesPerNode.minBy(_._2)
@@ -285,7 +304,7 @@ private[akka] class ClusterRouterGroupActor(val settings: ClusterRouterGroupSett
 
   var usedRouteePaths: Map[Address, Set[String]] =
     if (settings.allowLocalRoutees)
-      Map(cluster.selfAddress -> settings.routeesPaths.toSet)
+      Map(cluster.selfAddress → settings.routeesPaths.toSet)
     else
       Map.empty
 
@@ -363,7 +382,7 @@ private[akka] trait ClusterRouterActor { this: RouterActor ⇒
   }
 
   def isAvailable(m: Member): Boolean =
-    m.status == MemberStatus.Up &&
+    (m.status == MemberStatus.Up || m.status == MemberStatus.WeaklyUp) &&
       satisfiesRole(m.roles) &&
       (settings.allowLocalRoutees || m.address != cluster.selfAddress)
 

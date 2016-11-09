@@ -1,19 +1,15 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.testkit
 
 import akka.actor._
-import scala.concurrent.duration.Duration
-import akka.dispatch.DispatcherPrerequisites
 import scala.concurrent.duration.FiniteDuration
-import akka.dispatch.MessageDispatcher
-import akka.dispatch.MailboxType
 import scala.reflect.ClassTag
 
 /**
- * This is a specialised form of the TestActorRef with support for querying and
+ * This is a specialized form of the TestActorRef with support for querying and
  * setting the state of a FSM. Use a LoggingFSM with this class if you also
  * need to inspect event traces.
  *
@@ -37,10 +33,10 @@ import scala.reflect.ClassTag
  * @since 1.2
  */
 class TestFSMRef[S, D, T <: Actor](
-  system: ActorSystem,
-  props: Props,
+  system:     ActorSystem,
+  props:      Props,
   supervisor: ActorRef,
-  name: String)(implicit ev: T <:< FSM[S, D])
+  name:       String)(implicit ev: T <:< FSM[S, D])
   extends TestActorRef[T](system, props, supervisor, name) {
 
   private def fsm: T = underlyingActor
@@ -91,12 +87,22 @@ class TestFSMRef[S, D, T <: Actor](
 object TestFSMRef {
 
   def apply[S, D, T <: Actor: ClassTag](factory: ⇒ T)(implicit ev: T <:< FSM[S, D], system: ActorSystem): TestFSMRef[S, D, T] = {
-    val impl = system.asInstanceOf[ActorSystemImpl] //TODO ticket #1559
+    val impl = system.asInstanceOf[ActorSystemImpl]
     new TestFSMRef(impl, Props(factory), impl.guardian.asInstanceOf[InternalActorRef], TestActorRef.randomName)
   }
 
   def apply[S, D, T <: Actor: ClassTag](factory: ⇒ T, name: String)(implicit ev: T <:< FSM[S, D], system: ActorSystem): TestFSMRef[S, D, T] = {
-    val impl = system.asInstanceOf[ActorSystemImpl] //TODO ticket #1559
+    val impl = system.asInstanceOf[ActorSystemImpl]
     new TestFSMRef(impl, Props(factory), impl.guardian.asInstanceOf[InternalActorRef], name)
+  }
+
+  def apply[S, D, T <: Actor: ClassTag](factory: ⇒ T, supervisor: ActorRef, name: String)(implicit ev: T <:< FSM[S, D], system: ActorSystem): TestFSMRef[S, D, T] = {
+    val impl = system.asInstanceOf[ActorSystemImpl]
+    new TestFSMRef(impl, Props(factory), supervisor.asInstanceOf[InternalActorRef], name)
+  }
+
+  def apply[S, D, T <: Actor: ClassTag](factory: ⇒ T, supervisor: ActorRef)(implicit ev: T <:< FSM[S, D], system: ActorSystem): TestFSMRef[S, D, T] = {
+    val impl = system.asInstanceOf[ActorSystemImpl]
+    new TestFSMRef(impl, Props(factory), supervisor.asInstanceOf[InternalActorRef], TestActorRef.randomName)
   }
 }

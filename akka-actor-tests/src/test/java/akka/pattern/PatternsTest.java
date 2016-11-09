@@ -7,6 +7,7 @@ import akka.testkit.AkkaSpec;
 import akka.testkit.TestProbe;
 import org.junit.ClassRule;
 import org.junit.Test;
+import org.scalatest.junit.JUnitSuite;
 import scala.concurrent.Await;
 import scala.concurrent.duration.Duration;
 
@@ -15,9 +16,9 @@ import static akka.pattern.Patterns.pipe;
 import static org.junit.Assert.assertEquals;
 
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
-public class PatternsTest {
+public class PatternsTest extends JUnitSuite {
 
     @ClassRule
     public static AkkaJUnitActorSystemResource actorSystemResource = new AkkaJUnitActorSystemResource("JavaAPI",

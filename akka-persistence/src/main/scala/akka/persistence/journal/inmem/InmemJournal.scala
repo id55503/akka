@@ -1,32 +1,48 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.persistence.journal.inmem
 
 import scala.collection.immutable
-import scala.concurrent.duration._
-import scala.language.postfixOps
-
-import akka.actor._
-import akka.persistence._
-import akka.persistence.journal.AsyncWriteProxy
-import akka.persistence.journal.AsyncWriteTarget
-import akka.util.Timeout
+import scala.concurrent.Future
+import scala.util.Try
+import akka.persistence.journal.AsyncWriteJournal
+import akka.persistence.PersistentRepr
+import akka.persistence.AtomicWrite
 
 /**
  * INTERNAL API.
  *
  * In-memory journal for testing purposes only.
  */
-private[persistence] class InmemJournal extends AsyncWriteProxy {
-  import AsyncWriteProxy.SetStore
+private[persistence] class InmemJournal extends AsyncWriteJournal with InmemMessages {
+  override def asyncWriteMessages(messages: immutable.Seq[AtomicWrite]): Future[immutable.Seq[Try[Unit]]] = {
+    for (w ← messages; p ← w.payload)
+      add(p)
+    Future.successful(Nil) // all good
+  }
 
-  val timeout = Timeout(5 seconds)
+  override def asyncReadHighestSequenceNr(persistenceId: String, fromSequenceNr: Long): Future[Long] = {
+    Future.successful(highestSequenceNr(persistenceId))
+  }
 
-  override def preStart(): Unit = {
-    super.preStart()
-    self ! SetStore(context.actorOf(Props[InmemStore]))
+  override def asyncReplayMessages(persistenceId: String, fromSequenceNr: Long, toSequenceNr: Long, max: Long)(
+    recoveryCallback: PersistentRepr ⇒ Unit): Future[Unit] = {
+    val highest = highestSequenceNr(persistenceId)
+    if (highest != 0L && max != 0L)
+      read(persistenceId, fromSequenceNr, math.min(toSequenceNr, highest), max).foreach(recoveryCallback)
+    Future.successful(())
+  }
+
+  def asyncDeleteMessagesTo(persistenceId: String, toSequenceNr: Long): Future[Unit] = {
+    val toSeqNr = math.min(toSequenceNr, highestSequenceNr(persistenceId))
+    var snr = 1L
+    while (snr <= toSeqNr) {
+      delete(persistenceId, snr)
+      snr += 1
+    }
+    Future.successful(())
   }
 }
 
@@ -37,18 +53,18 @@ private[persistence] trait InmemMessages {
   // persistenceId -> persistent message
   var messages = Map.empty[String, Vector[PersistentRepr]]
 
-  def add(p: PersistentRepr) = messages = messages + (messages.get(p.persistenceId) match {
-    case Some(ms) ⇒ p.persistenceId -> (ms :+ p)
-    case None     ⇒ p.persistenceId -> Vector(p)
+  def add(p: PersistentRepr): Unit = messages = messages + (messages.get(p.persistenceId) match {
+    case Some(ms) ⇒ p.persistenceId → (ms :+ p)
+    case None     ⇒ p.persistenceId → Vector(p)
   })
 
-  def update(pid: String, snr: Long)(f: PersistentRepr ⇒ PersistentRepr) = messages = messages.get(pid) match {
-    case Some(ms) ⇒ messages + (pid -> ms.map(sp ⇒ if (sp.sequenceNr == snr) f(sp) else sp))
+  def update(pid: String, snr: Long)(f: PersistentRepr ⇒ PersistentRepr): Unit = messages = messages.get(pid) match {
+    case Some(ms) ⇒ messages + (pid → ms.map(sp ⇒ if (sp.sequenceNr == snr) f(sp) else sp))
     case None     ⇒ messages
   }
 
-  def delete(pid: String, snr: Long) = messages = messages.get(pid) match {
-    case Some(ms) ⇒ messages + (pid -> ms.filterNot(_.sequenceNr == snr))
+  def delete(pid: String, snr: Long): Unit = messages = messages.get(pid) match {
+    case Some(ms) ⇒ messages + (pid → ms.filterNot(_.sequenceNr == snr))
     case None     ⇒ messages
   }
 
@@ -69,23 +85,3 @@ private[persistence] trait InmemMessages {
     if (Int.MaxValue < l) Int.MaxValue else l.toInt
 }
 
-/**
- * INTERNAL API.
- */
-private[persistence] class InmemStore extends Actor with InmemMessages {
-  import AsyncWriteTarget._
-
-  def receive = {
-    case WriteMessages(msgs) ⇒
-      sender() ! msgs.foreach(add)
-    case DeleteMessagesTo(pid, tsnr, false) ⇒
-      sender() ! (1L to tsnr foreach { snr ⇒ update(pid, snr)(_.update(deleted = true)) })
-    case DeleteMessagesTo(pid, tsnr, true) ⇒
-      sender() ! (1L to tsnr foreach { snr ⇒ delete(pid, snr) })
-    case ReplayMessages(pid, fromSnr, toSnr, max) ⇒
-      read(pid, fromSnr, toSnr, max).foreach(sender() ! _)
-      sender() ! ReplaySuccess
-    case ReadHighestSequenceNr(persistenceId, _) ⇒
-      sender() ! highestSequenceNr(persistenceId)
-  }
-}

@@ -7,7 +7,7 @@ import akka.actor._
 import scala.concurrent.duration._
 import akka.testkit._
 import akka.remote.{ RARP, EndpointException }
-import akka.remote.transport.FailureInjectorTransportAdapter.{ One, All, Drop }
+import akka.remote.transport.FailureInjectorTransportAdapter.{ One, Drop }
 import scala.concurrent.Await
 
 object AkkaProtocolStressTest {
@@ -15,12 +15,11 @@ object AkkaProtocolStressTest {
     akka {
       #loglevel = DEBUG
       actor.serialize-messages = off
-      actor.provider = "akka.remote.RemoteActorRefProvider"
+      actor.provider = remote
 
       remote.log-remote-lifecycle-events = on
 
       remote.transport-failure-detector {
-        threshold = 1.0
         max-sample-size = 2
         min-std-deviation = 1 ms
         ## We want lots of lost connections in this test, keep it sensitive

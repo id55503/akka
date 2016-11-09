@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.singleton
@@ -17,6 +17,7 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import com.typesafe.config.Config
 import akka.actor.NoSerializationVerificationNeeded
+import akka.event.Logging
 
 object ClusterSingletonProxySettings {
 
@@ -33,8 +34,10 @@ object ClusterSingletonProxySettings {
    */
   def apply(config: Config): ClusterSingletonProxySettings =
     new ClusterSingletonProxySettings(
+      singletonName = config.getString("singleton-name"),
       role = roleOption(config.getString("role")),
-      singletonIdentificationInterval = config.getDuration("singleton-identification-interval", MILLISECONDS).millis)
+      singletonIdentificationInterval = config.getDuration("singleton-identification-interval", MILLISECONDS).millis,
+      bufferSize = config.getInt("buffer-size"))
 
   /**
    * Java API: Create settings from the default configuration
@@ -57,12 +60,23 @@ object ClusterSingletonProxySettings {
 }
 
 /**
+ * @param singletonName The actor name of the singleton actor that is started by the [[ClusterSingletonManager]].
  * @param role The role of the cluster nodes where the singleton can be deployed. If None, then any node will do.
  * @param singletonIdentificationInterval Interval at which the proxy will try to resolve the singleton instance.
+ * @param bufferSize If the location of the singleton is unknown the proxy will buffer this number of messages
+ *   and deliver them when the singleton is identified. When the buffer is full old messages will be dropped
+ *   when new messages are sent viea the proxy. Use 0 to disable buffering, i.e. messages will be dropped
+ *   immediately if the location of the singleton is unknown.
  */
 final class ClusterSingletonProxySettings(
-  val role: Option[String],
-  val singletonIdentificationInterval: FiniteDuration) extends NoSerializationVerificationNeeded {
+  val singletonName:                   String,
+  val role:                            Option[String],
+  val singletonIdentificationInterval: FiniteDuration,
+  val bufferSize:                      Int) extends NoSerializationVerificationNeeded {
+
+  require(bufferSize >= 0 && bufferSize <= 10000, "bufferSize must be >= 0 and <= 10000")
+
+  def withSingletonName(name: String): ClusterSingletonProxySettings = copy(singletonName = name)
 
   def withRole(role: String): ClusterSingletonProxySettings = copy(role = ClusterSingletonProxySettings.roleOption(role))
 
@@ -71,20 +85,27 @@ final class ClusterSingletonProxySettings(
   def withSingletonIdentificationInterval(singletonIdentificationInterval: FiniteDuration): ClusterSingletonProxySettings =
     copy(singletonIdentificationInterval = singletonIdentificationInterval)
 
-  private def copy(role: Option[String] = role,
-                   singletonIdentificationInterval: FiniteDuration = singletonIdentificationInterval): ClusterSingletonProxySettings =
-    new ClusterSingletonProxySettings(role, singletonIdentificationInterval)
+  def withBufferSize(bufferSize: Int): ClusterSingletonProxySettings =
+    copy(bufferSize = bufferSize)
+
+  private def copy(
+    singletonName:                   String         = singletonName,
+    role:                            Option[String] = role,
+    singletonIdentificationInterval: FiniteDuration = singletonIdentificationInterval,
+    bufferSize:                      Int            = bufferSize): ClusterSingletonProxySettings =
+    new ClusterSingletonProxySettings(singletonName, role, singletonIdentificationInterval, bufferSize)
 }
 
 object ClusterSingletonProxy {
   /**
    * Scala API: Factory method for `ClusterSingletonProxy` [[akka.actor.Props]].
    *
-   * @param singletonPath The logical path of the singleton, i.e., /user/singletonManager/singleton.
+   * @param singletonManagerPath The logical path of the singleton manager, e.g. `/user/singletonManager`,
+   *   which ends with the name you defined in `actorOf` when creating the [[ClusterSingletonManager]].
    * @param settings see [[ClusterSingletonProxySettings]]
    */
-  def props(singletonPath: String, settings: ClusterSingletonProxySettings): Props =
-    Props(new ClusterSingletonProxy(singletonPath, settings)).withDeploy(Deploy.local)
+  def props(singletonManagerPath: String, settings: ClusterSingletonProxySettings): Props =
+    Props(new ClusterSingletonProxy(singletonManagerPath, settings)).withDeploy(Deploy.local)
 
   private case object TryToIdentifySingleton
 
@@ -96,11 +117,11 @@ object ClusterSingletonProxy {
  *
  * The proxy can be started on every node where the singleton needs to be reached and used as if it were the singleton
  * itself. It will then act as a router to the currently running singleton instance. If the singleton is not currently
- * available, e.g., during hand off or startup, the proxy will stash the messages sent to the singleton and then unstash
- * them when the singleton is finally available. The proxy mixes in the [[akka.actor.Stash]] trait, so it can be
- * configured accordingly.
+ * available, e.g., during hand off or startup, the proxy will buffer the messages sent to the singleton and then deliver
+ * them when the singleton is finally available. The size of the buffer is configurable and it can be disabled by using
+ * a buffer size of 0. When the buffer is full old messages will be dropped when new messages are sent via the proxy.
  *
- * The proxy works by keeping track of the oldest cluster member. When a new oldest member is identified, e.g., because
+ * The proxy works by keeping track of the oldest cluster member. When a new oldest member is identified, e.g. because
  * the older one left the cluster, or at startup, the proxy will try to identify the singleton on the oldest member by
  * periodically sending an [[akka.actor.Identify]] message until the singleton responds with its
  * [[akka.actor.ActorIdentity]].
@@ -108,21 +129,21 @@ object ClusterSingletonProxy {
  * Note that this is a best effort implementation: messages can always be lost due to the distributed nature of the
  * actors involved.
  */
-class ClusterSingletonProxy(singletonPathString: String, settings: ClusterSingletonProxySettings) extends Actor with Stash with ActorLogging {
+final class ClusterSingletonProxy(singletonManagerPath: String, settings: ClusterSingletonProxySettings) extends Actor with ActorLogging {
   import settings._
-  val singletonPath = singletonPathString.split("/")
+  val singletonPath = (singletonManagerPath + "/" + settings.singletonName).split("/")
   var identifyCounter = 0
   var identifyId = createIdentifyId(identifyCounter)
-  def createIdentifyId(i: Int) = "identify-singleton-" + singletonPath mkString "/" + i
+  def createIdentifyId(i: Int) = "identify-singleton-" + singletonPath.mkString("/") + i
   var identifyTimer: Option[Cancellable] = None
 
   val cluster = Cluster(context.system)
   var singleton: Option[ActorRef] = None
   // sort by age, oldest first
-  val ageOrdering = Ordering.fromLessThan[Member] {
-    (a, b) ⇒ a.isOlderThan(b)
-  }
+  val ageOrdering = Member.ageOrdering
   var membersByAge: immutable.SortedSet[Member] = immutable.SortedSet.empty(ageOrdering)
+
+  var buffer = new java.util.LinkedList[(Any, ActorRef)]
 
   // subscribe to MemberEvent, re-subscribe when restart
   override def preStart(): Unit = {
@@ -148,7 +169,7 @@ class ClusterSingletonProxy(singletonPathString: String, settings: ClusterSingle
   def handleInitial(state: CurrentClusterState): Unit = {
     trackChange {
       () ⇒
-        membersByAge = immutable.SortedSet.empty(ageOrdering) ++ state.members.collect {
+        membersByAge = immutable.SortedSet.empty(ageOrdering) union state.members.collect {
           case m if m.status == MemberStatus.Up && matchingRole(m) ⇒ m
         }
     }
@@ -181,8 +202,9 @@ class ClusterSingletonProxy(singletonPathString: String, settings: ClusterSingle
    */
   def add(m: Member): Unit = {
     if (matchingRole(m))
-      trackChange {
-        () ⇒ membersByAge += m
+      trackChange { () ⇒
+        membersByAge -= m // replace
+        membersByAge += m
       }
   }
 
@@ -206,29 +228,58 @@ class ClusterSingletonProxy(singletonPathString: String, settings: ClusterSingle
 
     // singleton identification logic
     case ActorIdentity(identifyId, Some(s)) ⇒
-      // if the new singleton is defined, unstash all messages
-      log.info("Singleton identified: {}", s.path)
+      // if the new singleton is defined, deliver all buffered messages
+      log.info("Singleton identified at [{}]", s.path)
       singleton = Some(s)
+      context.watch(s)
       cancelTimer()
-      unstashAll()
+      sendBuffered()
     case _: ActorIdentity ⇒ // do nothing
     case ClusterSingletonProxy.TryToIdentifySingleton if identifyTimer.isDefined ⇒
       membersByAge.headOption.foreach {
         oldest ⇒
           val singletonAddress = RootActorPath(oldest.address) / singletonPath
-          log.debug("Trying to identify singleton at {}", singletonAddress)
+          log.debug("Trying to identify singleton at [{}]", singletonAddress)
           context.actorSelection(singletonAddress) ! Identify(identifyId)
+      }
+    case Terminated(ref) ⇒
+      if (singleton.exists(_ == ref)) {
+        // buffering mode, identification of new will start when old node is removed
+        singleton = None
       }
 
     // forwarding/stashing logic
     case msg: Any ⇒
       singleton match {
         case Some(s) ⇒
-          log.debug("Forwarding message to current singleton instance {}", msg)
+          if (log.isDebugEnabled)
+            log.debug(
+              "Forwarding message of type [{}] to current singleton instance at [{}]: {}",
+              Logging.simpleName(msg.getClass.getName), s.path)
           s forward msg
         case None ⇒
-          log.debug("No singleton available, stashing message {}", msg)
-          stash()
+          buffer(msg)
       }
+  }
+
+  def buffer(msg: Any): Unit =
+    if (settings.bufferSize == 0)
+      log.debug("Singleton not available and buffering is disabled, dropping message [{}]", msg.getClass.getName)
+    else if (buffer.size == settings.bufferSize) {
+      val (m, _) = buffer.removeFirst()
+      log.debug("Singleton not available, buffer is full, dropping first message [{}]", m.getClass.getName)
+      buffer.addLast((msg, sender()))
+    } else {
+      log.debug("Singleton not available, buffering message type [{}]", msg.getClass.getName)
+      buffer.addLast((msg, sender()))
+    }
+
+  def sendBuffered(): Unit = {
+    log.debug("Sending buffered messages to current singleton instance")
+    val target = singleton.get
+    while (!buffer.isEmpty) {
+      val (msg, snd) = buffer.removeFirst()
+      target.tell(msg, snd)
+    }
   }
 }

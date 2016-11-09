@@ -1,10 +1,9 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.camel
 
-import internal.ActorActivationException
 import language.postfixOps
 import language.existentials
 
@@ -12,7 +11,7 @@ import akka.actor._
 import org.scalatest.Matchers
 import org.scalatest.WordSpec
 import akka.camel.TestSupport._
-import org.apache.camel.model.{ ProcessorDefinition, RouteDefinition }
+import org.apache.camel.model.{ RouteDefinition }
 import org.apache.camel.builder.Builder
 import org.apache.camel.{ FailedToCreateRouteException, CamelExecutionException }
 import java.util.concurrent.{ ExecutionException, TimeUnit, TimeoutException }
@@ -124,13 +123,13 @@ class ConsumerIntegrationTest extends WordSpec with Matchers with NonSharedCamel
     }
 
     "Error passing consumer supports redelivery through route modification" in {
-      val ref = start(new FailingOnceConsumer("direct:failing-once-concumer") {
+      val ref = start(new FailingOnceConsumer("direct:failing-once-consumer") {
         override def onRouteDefinition = (rd: RouteDefinition) ⇒ {
-          rd.onException(classOf[TestException]).maximumRedeliveries(1).end
+          rd.onException(classOf[TestException]).redeliveryDelay(0L).maximumRedeliveries(1).end
         }
       }, name = "direct-failing-once-consumer")
       filterEvents(EventFilter[TestException](occurrences = 1)) {
-        camel.sendTo("direct:failing-once-concumer", msg = "hello") should ===("accepted: hello")
+        camel.sendTo("direct:failing-once-consumer", msg = "hello") should ===("accepted: hello")
       }
       stop(ref)
     }

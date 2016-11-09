@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.util
@@ -138,7 +138,7 @@ class Switch(startAsOn: Boolean = false) {
   def isOn: Boolean = switch.get
 
   /**
-   * Returns whether the switch is IMMEDDIATELY off (no locking)
+   * Returns whether the switch is IMMEDIATELY off (no locking)
    */
   def isOff: Boolean = !isOn
 }

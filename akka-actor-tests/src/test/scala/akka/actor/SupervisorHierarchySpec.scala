@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -26,6 +26,8 @@ import java.lang.System.identityHashCode
 import akka.util.Helpers.ConfigOps
 
 object SupervisorHierarchySpec {
+  import FSM.`→`
+
   class FireWorkerException(msg: String) extends Exception(msg)
 
   /**
@@ -79,7 +81,8 @@ object SupervisorHierarchySpec {
     extends DispatcherConfigurator(config, prerequisites) {
 
     private val instance: MessageDispatcher =
-      new Dispatcher(this,
+      new Dispatcher(
+        this,
         config.getString("id"),
         config.getInt("throughput"),
         config.getNanosDuration("throughput-deadline-time"),
@@ -467,7 +470,7 @@ object SupervisorHierarchySpec {
     }
 
     onTransition {
-      case Init -> Stress ⇒
+      case Init → Stress ⇒
         self ! Work
         idleChildren = children
         activeChildren = children
@@ -532,7 +535,7 @@ object SupervisorHierarchySpec {
     }
 
     onTransition {
-      case Stress -> Finishing ⇒ ignoreFailConstr = true
+      case Stress → Finishing ⇒ ignoreFailConstr = true
     }
 
     when(Finishing) {
@@ -546,7 +549,7 @@ object SupervisorHierarchySpec {
     }
 
     onTransition {
-      case _ -> LastPing ⇒
+      case _ → LastPing ⇒
         idleChildren foreach (_ ! "ping")
         pingChildren ++= idleChildren
         idleChildren = Vector.empty
@@ -563,7 +566,7 @@ object SupervisorHierarchySpec {
     }
 
     onTransition {
-      case _ -> Stopping ⇒
+      case _ → Stopping ⇒
         ignoreNotResumedLogs = false
         hierarchy ! PingOfDeath
     }
@@ -596,7 +599,7 @@ object SupervisorHierarchySpec {
           stop
         }
       case Event(StateTimeout, _) ⇒
-        errors :+= self -> ErrorLog("timeout while Stopping", Vector.empty)
+        errors :+= self → ErrorLog("timeout while Stopping", Vector.empty)
         println(system.asInstanceOf[ActorSystemImpl].printTree)
         getErrors(hierarchy, 10)
         printErrors()
@@ -604,7 +607,7 @@ object SupervisorHierarchySpec {
         testActor ! "timeout in Stopping"
         stop
       case Event(e: ErrorLog, _) ⇒
-        errors :+= sender() -> e
+        errors :+= sender() → e
         goto(Failed)
     }
 
@@ -630,7 +633,7 @@ object SupervisorHierarchySpec {
     when(Failed, stateTimeout = 5.seconds.dilated) {
       case Event(e: ErrorLog, _) ⇒
         if (!e.msg.startsWith("not resumed") || !ignoreNotResumedLogs)
-          errors :+= sender() -> e
+          errors :+= sender() → e
         stay
       case Event(Terminated(r), _) if r == hierarchy ⇒
         printErrors()
@@ -650,8 +653,8 @@ object SupervisorHierarchySpec {
       target match {
         case l: LocalActorRef ⇒
           l.underlying.actor match {
-            case h: Hierarchy ⇒ errors :+= target -> ErrorLog("forced", h.log)
-            case _            ⇒ errors :+= target -> ErrorLog("fetched", stateCache.get(target.path).log)
+            case h: Hierarchy ⇒ errors :+= target → ErrorLog("forced", h.log)
+            case _            ⇒ errors :+= target → ErrorLog("fetched", stateCache.get(target.path).log)
           }
           if (depth > 0) {
             l.underlying.children foreach (getErrors(_, depth - 1))
@@ -663,8 +666,8 @@ object SupervisorHierarchySpec {
       target match {
         case l: LocalActorRef ⇒
           l.underlying.actor match {
-            case h: Hierarchy ⇒ errors :+= target -> ErrorLog("forced", h.log)
-            case _            ⇒ errors :+= target -> ErrorLog("fetched", stateCache.get(target.path).log)
+            case h: Hierarchy ⇒ errors :+= target → ErrorLog("forced", h.log)
+            case _            ⇒ errors :+= target → ErrorLog("fetched", stateCache.get(target.path).log)
           }
           if (target != hierarchy) getErrorsUp(l.getParent)
       }
@@ -693,7 +696,7 @@ object SupervisorHierarchySpec {
       case Event(e: ErrorLog, _) ⇒
         if (e.msg.startsWith("not resumed")) stay
         else {
-          errors :+= sender() -> e
+          errors :+= sender() → e
           // don’t stop the hierarchy, that is going to happen all by itself and in the right order
           goto(Failed)
         }
@@ -718,7 +721,6 @@ object SupervisorHierarchySpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class SupervisorHierarchySpec extends AkkaSpec(SupervisorHierarchySpec.config) with DefaultTimeout with ImplicitSender {
   import SupervisorHierarchySpec._
 

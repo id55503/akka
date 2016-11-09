@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.routing
 
@@ -66,9 +66,9 @@ private[akka] final class BalancingRoutingLogic extends RoutingLogic {
  */
 @SerialVersionUID(1L)
 final case class BalancingPool(
-  override val nrOfInstances: Int,
+  override val nrOfInstances:      Int,
   override val supervisorStrategy: SupervisorStrategy = Pool.defaultSupervisorStrategy,
-  override val routerDispatcher: String = Dispatchers.DefaultDispatcherId)
+  override val routerDispatcher:   String             = Dispatchers.DefaultDispatcherId)
   extends Pool {
 
   def this(config: Config) =
@@ -112,12 +112,14 @@ final case class BalancingPool(
       // dispatcher of this pool
       val deployDispatcherConfigPath = s"akka.actor.deployment.$deployPath.pool-dispatcher"
       val systemConfig = context.system.settings.config
-      val dispatcherConfig = context.system.dispatchers.config(dispatcherId,
+      val dispatcherConfig = context.system.dispatchers.config(
+        dispatcherId,
         // use the user defined 'pool-dispatcher' config as fallback, if any
         if (systemConfig.hasPath(deployDispatcherConfigPath)) systemConfig.getConfig(deployDispatcherConfigPath)
         else ConfigFactory.empty)
 
-      dispatchers.registerConfigurator(dispatcherId, new BalancingDispatcherConfigurator(dispatcherConfig,
+      dispatchers.registerConfigurator(dispatcherId, new BalancingDispatcherConfigurator(
+        dispatcherConfig,
         dispatchers.prerequisites))
     }
 
@@ -126,7 +128,7 @@ final case class BalancingPool(
   }
 
   /**
-   * Uses the supervisor strategy of the given Routerconfig
+   * Uses the supervisor strategy of the given RouterConfig
    * if this RouterConfig doesn't have one.
    */
   override def withFallback(other: RouterConfig): RouterConfig =

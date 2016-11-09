@@ -128,7 +128,7 @@ but if 2 or more ``Future``\s are involved ``map`` will not allow you to combine
 .. includecode:: code/docs/future/FutureDocSpec.scala
    :include: flat-map
 
-Composing futures using nested combinators it can sometimes become quite complicated and hard read, in these cases using Scala's
+Composing futures using nested combinators it can sometimes become quite complicated and hard to read, in these cases using Scala's
 'for comprehensions' usually yields more readable code. See next section for examples.
 
 If you need to do conditional propagation, you can use ``filter``:
@@ -227,7 +227,7 @@ Callbacks
 ---------
 
 Sometimes you just want to listen to a ``Future`` being completed, and react to that not by creating a new ``Future``, but by side-effecting.
-For this Scala supports ``onComplete``, ``onSuccess`` and ``onFailure``, of which the latter two are specializations of the first.
+For this Scala supports ``onComplete``, ``onSuccess`` and ``onFailure``, of which the last two are specializations of the first.
 
 .. includecode:: code/docs/future/FutureDocSpec.scala
    :include: onSuccess

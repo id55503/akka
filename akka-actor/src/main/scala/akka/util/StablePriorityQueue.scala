@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2015-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.util
@@ -32,7 +32,7 @@ trait PriorityQueueStabilizer[E <: AnyRef] extends AbstractQueue[E] {
     private[this] val backingIterator = backingQueue.iterator()
     def hasNext: Boolean = backingIterator.hasNext
     def next(): E = backingIterator.next().element
-    def remove() = backingIterator.remove()
+    override def remove() = backingIterator.remove()
   }
 
   override def poll(): E = {

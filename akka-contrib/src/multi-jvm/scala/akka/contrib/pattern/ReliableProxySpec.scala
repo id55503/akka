@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.contrib.pattern
@@ -103,7 +103,7 @@ class ReliableProxySpec extends MultiNodeSpec(ReliableProxySpec) with STMultiNod
       }
 
       runOn(remote) {
-        expectMsg("hello")
+        expectMsg(1.second, "hello")
       }
 
       enterBarrier("initialize-done")
@@ -116,7 +116,7 @@ class ReliableProxySpec extends MultiNodeSpec(ReliableProxySpec) with STMultiNod
         expectTransition(Active, Idle)
       }
       runOn(remote) {
-        within(1 second) {
+        within(5 seconds) {
           expectN(100)
         }
       }
@@ -129,7 +129,7 @@ class ReliableProxySpec extends MultiNodeSpec(ReliableProxySpec) with STMultiNod
         expectTransition(Active, Idle)
       }
       runOn(remote) {
-        within(1 second) {
+        within(5 seconds) {
           expectN(100)
         }
       }
@@ -158,7 +158,7 @@ class ReliableProxySpec extends MultiNodeSpec(ReliableProxySpec) with STMultiNod
         expectTransition(5 seconds, Active, Idle)
       }
       runOn(remote) {
-        within(1 second) {
+        within(5 seconds) {
           expectN(100)
         }
       }
@@ -174,7 +174,7 @@ class ReliableProxySpec extends MultiNodeSpec(ReliableProxySpec) with STMultiNod
         expectNoMsg(expectNoMsgTimeout)
       }
       runOn(remote) {
-        within(1 second) {
+        within(5 second) {
           expectN(100)
         }
       }
@@ -231,10 +231,10 @@ class ReliableProxySpec extends MultiNodeSpec(ReliableProxySpec) with STMultiNod
         }
       }
       runOn(remote) {
-        within(1 second) {
+        within(5 second) {
           expectN(50)
         }
-        expectNoMsg(2 seconds)
+        expectNoMsg(1 seconds)
       }
 
       enterBarrier("test5")

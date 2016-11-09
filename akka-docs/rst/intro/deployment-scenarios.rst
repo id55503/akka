@@ -14,7 +14,7 @@ Akka can be used in different ways:
 
 - Package with `sbt-native-packager <https://github.com/sbt/sbt-native-packager>`_
 
-- Package and deploy using `Typesafe ConductR <http://typesafe.com/products/conductr>`_.
+- Package and deploy using `Lightbend ConductR <http://www.lightbend.com/products/conductr>`_.
 
 
 Native Packager
@@ -40,8 +40,8 @@ Use the package settings and optionally specify the mainClass in ``build.sbt`` f
 .. includecode:: ../../../akka-samples/akka-sample-main-scala/build.sbt
 
 
-.. note:: Use the ``JavaServerAppPackaging``. Don't use ``AkkaAppPackaging`` (previously named 
-   ``packageArchetype.akka_application``, since it doesn't have the same flexibility and quality
+.. note:: Use the ``JavaServerAppPackaging``. Don't use the deprecated ``AkkaAppPackaging`` (previously named 
+   ``packageArchetype.akka_application``), since it doesn't have the same flexibility and quality
    as the ``JavaServerAppPackaging``.
 
 Use sbt task ``dist`` package the application.
@@ -58,4 +58,16 @@ To start the application (on a unix-based system):
 Use ``Ctrl-C`` to interrupt and exit the application.
 
 On a Windows machine you can also use the ``bin\akka-sample-main-scala.bat`` script.
+
+
+In a Docker container
+=====================
+You can use both Akka remoting and Akka Cluster inside of Docker containers. But note
+that you will need to take special care with the network configuration when using Docker,
+described here: :ref:`remote-configuration-nat`
+
+For an example of how to set up a project using Akka Cluster and Docker take a look at the
+`"akka-docker-cluster" activator template`__.
+
+__ https://www.lightbend.com/activator/template/akka-docker-cluster
 

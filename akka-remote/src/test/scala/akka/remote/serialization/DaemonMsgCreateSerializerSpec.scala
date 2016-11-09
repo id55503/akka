@@ -1,17 +1,17 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.remote.serialization
 
 import language.postfixOps
-
 import akka.serialization.SerializationExtension
 import com.typesafe.config.ConfigFactory
 import akka.testkit.AkkaSpec
 import akka.actor.{ Actor, Address, Props, Deploy, OneForOneStrategy, SupervisorStrategy }
 import akka.remote.{ DaemonMsgCreate, RemoteScope }
 import akka.routing.{ RoundRobinPool, FromConfig }
+import akka.util.IgnoreForScala212
 import scala.concurrent.duration._
 
 object DaemonMsgCreateSerializerSpec {
@@ -24,7 +24,6 @@ object DaemonMsgCreateSerializerSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class DaemonMsgCreateSerializerSpec extends AkkaSpec {
 
   import DaemonMsgCreateSerializerSpec._
@@ -57,7 +56,7 @@ class DaemonMsgCreateSerializerSpec extends AkkaSpec {
       }
     }
 
-    "serialize and de-serialize DaemonMsgCreate with function creator" in {
+    "serialize and de-serialize DaemonMsgCreate with function creator" taggedAs IgnoreForScala212 in {
       verifySerialization {
         DaemonMsgCreate(
           props = Props(new MyActor),

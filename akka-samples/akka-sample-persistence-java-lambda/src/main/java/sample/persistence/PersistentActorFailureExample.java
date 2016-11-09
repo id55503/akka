@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package sample.persistence;
@@ -71,7 +71,7 @@ public class PersistentActorFailureExample {
 
     // etc ...
 
-    Thread.sleep(1000);
+    Thread.sleep(10000);
     system.terminate();
   }
 }

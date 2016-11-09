@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.io
 
@@ -51,7 +51,8 @@ private[io] trait WithUdpSend {
             } catch {
               case NonFatal(e) ⇒
                 sender() ! CommandFailed(send)
-                log.debug("Failure while sending UDP datagram to remote address [{}]: {}",
+                log.debug(
+                  "Failure while sending UDP datagram to remote address [{}]: {}",
                   send.target, e)
                 retriedSend = false
                 pendingSend = null

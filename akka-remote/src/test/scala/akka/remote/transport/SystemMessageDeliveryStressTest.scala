@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.transport
 
@@ -9,12 +9,11 @@ import akka.testkit.DefaultTimeout
 import akka.testkit.ImplicitSender
 import akka.testkit.{ TimingTest, DefaultTimeout, ImplicitSender, AkkaSpec }
 import com.typesafe.config.{ Config, ConfigFactory }
-import AkkaProtocolStressTest._
 import akka.actor._
 import scala.concurrent.duration._
 import akka.testkit._
 import akka.remote.{ QuarantinedEvent, EndpointException, RARP }
-import akka.remote.transport.FailureInjectorTransportAdapter.{ One, All, Drop }
+import akka.remote.transport.FailureInjectorTransportAdapter.{ One, Drop }
 import scala.concurrent.Await
 import akka.actor.ActorRef
 import akka.actor.Actor
@@ -27,9 +26,7 @@ import akka.remote.transport.FailureInjectorTransportAdapter.One
 import akka.remote.transport.FailureInjectorTransportAdapter.Drop
 import akka.testkit.TestEvent
 import akka.testkit.EventFilter
-import akka.event.Logging
 import akka.dispatch.sysmsg.{ Failed, SystemMessage }
-import akka.pattern.pipe
 
 object SystemMessageDeliveryStressTest {
   val msgCount = 5000
@@ -39,7 +36,7 @@ object SystemMessageDeliveryStressTest {
   val baseConfig: Config = ConfigFactory parseString (s"""
     akka {
       #loglevel = DEBUG
-      actor.provider = "akka.remote.RemoteActorRefProvider"
+      actor.provider = remote
       actor.serialize-messages = off
 
       remote.log-remote-lifecycle-events = on
@@ -112,7 +109,7 @@ abstract class SystemMessageDeliveryStressTest(msg: String, cfg: String)
   with DefaultTimeout {
   import SystemMessageDeliveryStressTest._
 
-  override def expectedTestDuration: FiniteDuration = 120.seconds
+  override def expectedTestDuration: FiniteDuration = 200.seconds
 
   val systemA = system
   val systemB = ActorSystem("systemB", system.settings.config)
@@ -192,9 +189,11 @@ abstract class SystemMessageDeliveryStressTest(msg: String, cfg: String)
 
 }
 
-class SystemMessageDeliveryRetryGate extends SystemMessageDeliveryStressTest("passive connections on",
+class SystemMessageDeliveryRetryGate extends SystemMessageDeliveryStressTest(
+  "passive connections on",
   "akka.remote.retry-gate-closed-for = 0.5 s")
-class SystemMessageDeliveryNoPassiveRetryGate extends SystemMessageDeliveryStressTest("passive connections off",
+class SystemMessageDeliveryNoPassiveRetryGate extends SystemMessageDeliveryStressTest(
+  "passive connections off",
   """
     akka.remote.use-passive-connections = off
     akka.remote.retry-gate-closed-for = 0.5 s

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.testkit
@@ -19,10 +19,10 @@ import akka.pattern.ask
  * @since 1.1
  */
 class TestActorRef[T <: Actor](
-  _system: ActorSystem,
-  _props: Props,
+  _system:     ActorSystem,
+  _props:      Props,
   _supervisor: ActorRef,
-  name: String)
+  name:        String)
   extends {
     val props =
       _props.withDispatcher(
@@ -105,7 +105,7 @@ class TestActorRef[T <: Actor](
   def watch(subject: ActorRef): ActorRef = underlying.watch(subject)
 
   /**
-   * Deregisters this actor from being a death monitor of the provided ActorRef
+   * Unregisters this actor from being a death monitor of the provided ActorRef
    * This means that this actor will not get a Terminated()-message when the provided actor
    * is permanently terminated.
    *
@@ -136,6 +136,11 @@ object TestActorRef {
   def apply[T <: Actor](props: Props, name: String)(implicit system: ActorSystem): TestActorRef[T] =
     apply[T](props, system.asInstanceOf[ActorSystemImpl].guardian, name)
 
+  def apply[T <: Actor](props: Props, supervisor: ActorRef)(implicit system: ActorSystem): TestActorRef[T] = {
+    val sysImpl = system.asInstanceOf[ActorSystemImpl]
+    new TestActorRef(sysImpl, props, supervisor.asInstanceOf[InternalActorRef], randomName)
+  }
+
   def apply[T <: Actor](props: Props, supervisor: ActorRef, name: String)(implicit system: ActorSystem): TestActorRef[T] = {
     val sysImpl = system.asInstanceOf[ActorSystemImpl]
     new TestActorRef(sysImpl, props, supervisor.asInstanceOf[InternalActorRef], name)
@@ -143,15 +148,41 @@ object TestActorRef {
 
   def apply[T <: Actor](implicit t: ClassTag[T], system: ActorSystem): TestActorRef[T] = apply[T](randomName)
 
+  private def dynamicCreateRecover[U]: PartialFunction[Throwable, U] = {
+    case exception ⇒ throw ActorInitializationException(
+      null,
+      "Could not instantiate Actor" +
+        "\nMake sure Actor is NOT defined inside a class/trait," +
+        "\nif so put it outside the class/trait, f.e. in a companion object," +
+        "\nOR try to change: 'actorOf(Props[MyActor]' to 'actorOf(Props(new MyActor)'.", exception)
+  }
+
   def apply[T <: Actor](name: String)(implicit t: ClassTag[T], system: ActorSystem): TestActorRef[T] = apply[T](Props({
-    system.asInstanceOf[ExtendedActorSystem].dynamicAccess.createInstanceFor[T](t.runtimeClass, Nil).recover({
-      case exception ⇒ throw ActorInitializationException(null,
-        "Could not instantiate Actor" +
-          "\nMake sure Actor is NOT defined inside a class/trait," +
-          "\nif so put it outside the class/trait, f.e. in a companion object," +
-          "\nOR try to change: 'actorOf(Props[MyActor]' to 'actorOf(Props(new MyActor)'.", exception)
-    }).get
+    system.asInstanceOf[ExtendedActorSystem].dynamicAccess
+      .createInstanceFor[T](t.runtimeClass, Nil).recover(dynamicCreateRecover).get
   }), name)
+
+  def apply[T <: Actor](supervisor: ActorRef)(implicit t: ClassTag[T], system: ActorSystem): TestActorRef[T] = apply[T](Props({
+    system.asInstanceOf[ExtendedActorSystem].dynamicAccess
+      .createInstanceFor[T](t.runtimeClass, Nil).recover(dynamicCreateRecover).get
+  }), supervisor)
+
+  def apply[T <: Actor](supervisor: ActorRef, name: String)(implicit t: ClassTag[T], system: ActorSystem): TestActorRef[T] = apply[T](Props({
+    system.asInstanceOf[ExtendedActorSystem]
+      .dynamicAccess.createInstanceFor[T](t.runtimeClass, Nil).recover(dynamicCreateRecover).get
+  }), supervisor, name)
+
+  /**
+   * Java API: create a TestActorRef in the given system for the given props,
+   * with the given supervisor and name.
+   */
+  def create[T <: Actor](system: ActorSystem, props: Props, supervisor: ActorRef, name: String): TestActorRef[T] = apply(props, supervisor, name)(system)
+
+  /**
+   * Java API: create a TestActorRef in the given system for the given props,
+   * with the given supervisor and a random name.
+   */
+  def create[T <: Actor](system: ActorSystem, props: Props, supervisor: ActorRef): TestActorRef[T] = apply(props, supervisor)(system)
 
   /**
    * Java API: create a TestActorRef in the given system for the given props,

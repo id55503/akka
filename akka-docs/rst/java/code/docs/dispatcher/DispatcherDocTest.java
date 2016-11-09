@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.dispatcher;
 
@@ -7,6 +7,7 @@ import akka.dispatch.ControlMessage;
 import akka.dispatch.RequiresMessageQueue;
 import akka.testkit.AkkaSpec;
 import com.typesafe.config.ConfigFactory;
+import docs.AbstractJavaTest;
 import docs.actor.MyBoundedUntypedActor;
 import docs.actor.MyUntypedActor;
 import org.junit.ClassRule;
@@ -36,7 +37,7 @@ import com.typesafe.config.Config;
 
 //#imports-required-mailbox
 
-public class DispatcherDocTest {
+public class DispatcherDocTest extends AbstractJavaTest {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource =
@@ -64,6 +65,15 @@ public class DispatcherDocTest {
       system.actorOf(Props.create(MyUntypedActor.class).withDispatcher("my-dispatcher"),
         "myactor3");
     //#defining-dispatcher-in-code
+  }
+
+  @SuppressWarnings("unused")
+  @Test
+  public void defineFixedPoolSizeDispatcher() {
+    //#defining-fixed-pool-size-dispatcher
+    ActorRef myActor = system.actorOf(Props.create(MyUntypedActor.class)
+        .withDispatcher("blocking-io-dispatcher"));
+    //#defining-fixed-pool-size-dispatcher
   }
 
   @SuppressWarnings("unused")

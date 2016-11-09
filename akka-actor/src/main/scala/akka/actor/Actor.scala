@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -61,7 +61,7 @@ case object Kill extends Kill {
  * is returned in the `ActorIdentity` message as `correlationId`.
  */
 @SerialVersionUID(1L)
-final case class Identify(messageId: Any) extends AutoReceivedMessage
+final case class Identify(messageId: Any) extends AutoReceivedMessage with NotInfluenceReceiveTimeout
 
 /**
  * Reply to [[akka.actor.Identify]]. Contains
@@ -96,7 +96,7 @@ final case class ActorIdentity(correlationId: Any, ref: Option[ActorRef]) {
 @SerialVersionUID(1L)
 final case class Terminated private[akka] (@BeanProperty actor: ActorRef)(
   @BeanProperty val existenceConfirmed: Boolean,
-  @BeanProperty val addressTerminated: Boolean)
+  @BeanProperty val addressTerminated:  Boolean)
   extends AutoReceivedMessage with PossiblyHarmful with DeadLetterSuppression
 
 /**
@@ -127,6 +127,11 @@ case object ReceiveTimeout extends ReceiveTimeout {
 }
 
 /**
+ * Marker trait to indicate that a message should not reset the receive timeout.
+ */
+trait NotInfluenceReceiveTimeout
+
+/**
  * IllegalActorStateException is thrown when a core invariant in the Actor implementation has been violated.
  * For instance, if you try to create an Actor that doesn't extend Actor.
  */
@@ -147,7 +152,7 @@ final case class ActorKilledException private[akka] (message: String) extends Ak
 final case class InvalidActorNameException(message: String) extends AkkaException(message)
 
 /**
- * An ActorInitializationException is thrown when the the initialization logic for an Actor fails.
+ * An ActorInitializationException is thrown when the initialization logic for an Actor fails.
  *
  * There is an extractor which works for ActorInitializationException and its subtypes:
  *
@@ -159,10 +164,12 @@ final case class InvalidActorNameException(message: String) extends AkkaExceptio
  */
 @SerialVersionUID(1L)
 class ActorInitializationException protected (actor: ActorRef, message: String, cause: Throwable)
-  extends AkkaException(message, cause) {
+  extends AkkaException(ActorInitializationException.enrichedMessage(actor, message), cause) {
   def getActor: ActorRef = actor
 }
 object ActorInitializationException {
+  private def enrichedMessage(actor: ActorRef, message: String) =
+    if (actor == null) message else s"${actor.path}: $message"
   private[akka] def apply(actor: ActorRef, message: String, cause: Throwable = null): ActorInitializationException =
     new ActorInitializationException(actor, message, cause)
   private[akka] def apply(message: String): ActorInitializationException = new ActorInitializationException(null, message, null)
@@ -182,7 +189,8 @@ object ActorInitializationException {
  */
 @SerialVersionUID(1L)
 final case class PreRestartException private[akka] (actor: ActorRef, cause: Throwable, originalCause: Throwable, messageOption: Option[Any])
-  extends ActorInitializationException(actor,
+  extends ActorInitializationException(
+    actor,
     "exception in preRestart(" +
       (if (originalCause == null) "null" else originalCause.getClass) + ", " +
       (messageOption match { case Some(m: AnyRef) ⇒ m.getClass; case _ ⇒ "None" }) +
@@ -198,7 +206,8 @@ final case class PreRestartException private[akka] (actor: ActorRef, cause: Thro
  */
 @SerialVersionUID(1L)
 final case class PostRestartException private[akka] (actor: ActorRef, cause: Throwable, originalCause: Throwable)
-  extends ActorInitializationException(actor,
+  extends ActorInitializationException(
+    actor,
     "exception post restart (" + (if (originalCause == null) "null" else originalCause.getClass) + ")", cause)
 
 /**

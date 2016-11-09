@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.typed.patterns
 
@@ -53,7 +53,7 @@ object Receptionist {
   final case class Find[T](key: ServiceKey[T])(val replyTo: ActorRef[Listing[T]]) extends Command
 
   /**
-   * Confirmtion that the given [[akka.typed.ActorRef]] has been associated with the [[ServiceKey]].
+   * Confirmation that the given [[akka.typed.ActorRef]] has been associated with the [[ServiceKey]].
    */
   final case class Registered[T](key: ServiceKey[T], address: ActorRef[T])
   /**

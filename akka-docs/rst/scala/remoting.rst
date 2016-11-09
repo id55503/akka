@@ -1,8 +1,7 @@
 .. _remoting-scala:
 
-##########
- Remoting
-##########
+Remoting
+########
 
 For an introduction of remoting capabilities of Akka please see :ref:`remoting`.
 
@@ -13,7 +12,7 @@ For an introduction of remoting capabilities of Akka please see :ref:`remoting`.
   particular Akka Remoting does not work transparently with Network Address Translation,
   Load Balancers, or in Docker containers. For symmetric communication in these situations
   network and/or Akka configuration will have to be changed as described in
-  :ref:`symmetric-communication`.
+  :ref:`remote-configuration-nat`.
 
 Preparing your ActorSystem for Remoting
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -27,7 +26,7 @@ to your ``application.conf`` file::
 
   akka {
     actor {
-      provider = "akka.remote.RemoteActorRefProvider"
+      provider = remote
     }
     remote {
       enabled-transports = ["akka.remote.netty.tcp"]
@@ -40,7 +39,7 @@ to your ``application.conf`` file::
 
 As you can see in the example above there are four things you need to add to get started:
 
-* Change provider from ``akka.actor.LocalActorRefProvider`` to ``akka.remote.RemoteActorRefProvider``
+* Change provider from ``local`` to ``remote``
 * Add host name - the machine you want to run the actor system on; this host
   name is exactly what is passed to remote systems in order to identify this
   system and consequently used for connecting back to this system if need be,
@@ -93,6 +92,17 @@ the :class:`ActorSelection`, which returns a ``Future`` of the matching
 .. note::
 
   For more details on how actor addresses and paths are formed and used, please refer to :ref:`addressing`.
+
+.. note::
+
+  Message sends to actors that are actually in the sending actor system do not
+  get delivered via the remote actor ref provider. They're delivered directly,
+  by the local actor ref provider.
+
+  Aside from providing better performance, this also means that if the hostname
+  you configure remoting to listen as cannot actually be resolved from within
+  the very same actor system, such messages will (perhaps counterintuitively)
+  be delivered just fine.
 
 Creating Actors Remotely
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -164,6 +174,26 @@ you can advise the system to create a child on that remote node like so:
 
 .. includecode:: code/docs/remoting/RemoteDeploymentDocSpec.scala#deploy
 
+.. _remote-deployment-whitelist-scala:
+
+Remote deployment whitelist
+---------------------------
+
+As remote deployment can potentially be abused by both users and even attackers a whitelist feature
+is available to guard the ActorSystem from deploying unexpected actors. Please note that remote deployment
+is *not* remote code loading, the Actors class to be deployed onto a remote system needs to be present on that
+remote system. This still however may pose a security risk, and one may want to restrict remote deployment to
+only a specific set of known actors by enabling the whitelist feature.
+
+To enable remote deployment whitelisting set the ``akka.remote.deployment.enable-whitelist`` value to ``on``.
+The list of allowed classes has to be configured on the "remote" system, in other words on the system onto which 
+others will be attempting to remote deploy Actors. That system, locally, knows best which Actors it should or 
+should not allow others to remote deploy onto it. The full settings section may for example look like this:
+
+.. includecode:: ../../../akka-remote/src/test/scala/akka/remote/RemoteDeploymentWhitelistSpec.scala#whitelist-config
+
+Actor classes not included in the whitelist will not be allowed to be remote deployed onto this system.
+
 Lifecycle and Failure Recovery Model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -201,7 +231,7 @@ message from network failures and JVM crashes, in addition to graceful terminati
 actor.
 
 The heartbeat arrival times is interpreted by an implementation of
-`The Phi Accrual Failure Detector <http://ddg.jaist.ac.jp/pub/HDY+04.pdf>`_.
+`The Phi Accrual Failure Detector <http://www.jaist.ac.jp/~defago/files/pdf/IS_RR_2004_010.pdf>`_.
 
 The suspicion level of failure is given by a value called *phi*.
 The basic idea of the phi failure detector is to express the value of *phi* on a scale that
@@ -252,7 +282,76 @@ Serialization
 When using remoting for actors you must ensure that the ``props`` and ``messages`` used for
 those actors are serializable. Failing to do so will cause the system to behave in an unintended way.
 
-For more information please see :ref:`serialization-scala`
+For more information please see :ref:`serialization-scala`.
+
+Disabling the Java Serializer
+-----------------------------
+
+Since the ``2.4.11`` release of Akka it is possible to entirely disable the default Java Serialization mechanism.
+Please note that :ref:`new remoting implementation (codename Artery) <remoting-artery-scala>` does not use Java 
+serialization for internal messages by default. For compatibility reasons, the current remoting still uses Java 
+serialization for some classes, however you can disable it in this remoting implementation as well by following 
+the steps below.
+
+The first step is to enable some additional serializers that replace previous Java serialization of some internal
+messages. This is recommended also when you can't disable Java serialization completely. Those serializers are
+enabled with this configuration:
+
+.. code-block:: ruby
+
+  akka.actor {
+    # Set this to on to enable serialization-bindings define in
+    # additional-serialization-bindings. Those are by default not included
+    # for backwards compatibility reasons. They are enabled by default if
+    # akka.remote.artery.enabled=on. 
+    enable-additional-serialization-bindings = on
+  }
+
+The reason these are not enabled by default is wire-level compatibility between any 2.4.x Actor Systems.
+If you roll out a new cluster, all on the same Akka version that can enable these serializers it is recommended to 
+enable this setting. When using :ref:`remoting-artery-scala` these serializers are enabled by default.
+
+.. warning:: 
+  Please note that when enabling the additional-serialization-bindings when using the old remoting, 
+  you must do so on all nodes participating in a cluster, otherwise the mis-aligned serialization
+  configurations will cause deserialization errors on the receiving nodes.
+
+Java serialization is known to be slow and prone to attacks of various kinds - it never was designed for high 
+throughput messaging after all. However it is very convenient to use, thus it remained the default serialization 
+mechanism that Akka used to serialize user messages as well as some of its internal messages in previous versions.
+Since the release of Artery, Akka internals do not rely on Java serialization anymore (one exception being ``java.lang.Throwable``).
+
+.. note:: 
+  When using the new remoting implementation (codename Artery), Akka does not use Java Serialization for any of it's internal messages.  
+  It is highly encouraged to disable java serialization, so please plan to do so at the earliest possibility you have in your project.
+
+  One may think that network bandwidth and latency limit the performance of remote messaging, but serialization is a more typical bottleneck.
+
+For user messages, the default serializer, implemented using Java serialization, remains available and enabled in Artery.
+We do however recommend to disable it entirely and utilise a proper serialization library instead in order effectively utilise 
+the improved performance and ability for rolling deployments using Artery. Libraries that we recommend to use include, 
+but are not limited to, `Kryo`_ by using the `akka-kryo-serialization`_ library or `Google Protocol Buffers`_ if you want
+more control over the schema evolution of your messages. 
+
+In order to completely disable Java Serialization in your Actor system you need to add the following configuration to 
+your ``application.conf``:
+
+.. code-block:: ruby
+
+  akka {
+    actor {
+      serialization-bindings {
+        "java.io.Serializable" = none
+      }
+    }
+  } 
+
+Please note that this means that you will have to configure different serializers which will able to handle all of your
+remote messages. Please refer to the :ref:`serialization-scala` documentation as well as :ref:`ByteBuffer based serialization <remote-bytebuffer-serialization-scala>` to learn how to do this.
+
+.. _Kryo: https://github.com/EsotericSoftware/kryo
+.. _akka-kryo-serialization: https://github.com/romix/akka-kryo-serialization
+.. _Google Protocol Buffers: https://developers.google.com/protocol-buffers/
 
 Routers with Remote Destinations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -279,61 +378,9 @@ That is not done by the router.
 Remoting Sample
 ^^^^^^^^^^^^^^^
 
-There is a more extensive remote example that comes with `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_.
-The tutorial named `Akka Remote Samples with Scala <http://www.typesafe.com/activator/template/akka-sample-remote-scala>`_
+There is a more extensive remote example that comes with `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_.
+The tutorial named `Akka Remote Samples with Scala <http://www.lightbend.com/activator/template/akka-sample-remote-scala>`_
 demonstrates both remote deployment and look-up of remote actors.
-
-Pluggable transport support
----------------------------
-
-Akka can be configured to use various transports to communicate with remote systems. The core
-component of this feature is the :meth:`akka.remote.transport.Transport` SPI. Transport implementations must extend this trait.
-Transports can be loaded by setting the ``akka.remote.enabled-transports`` configuration key to point to one or
-more configuration sections containing driver descriptions.
-
-An example of setting up the default Netty based SSL driver as default::
-
-  akka {
-    remote {
-      enabled-transports = [akka.remote.netty.ssl]
-
-      netty.ssl.security {
-        key-store = "mykeystore"
-        trust-store = "mytruststore"
-        key-store-password = "changeme"
-        key-password = "changeme"
-        trust-store-password = "changeme"
-        protocol = "TLSv1"
-        random-number-generator = "AES128CounterSecureRNG"
-        enabled-algorithms = [TLS_RSA_WITH_AES_128_CBC_SHA]
-      }
-    }
-  }
-
-An example of setting up a custom transport implementation::
-
-  akka {
-    remote {
-      applied-transports = ["akka.remote.mytransport"]
-
-      mytransport {
-        # The transport-class configuration entry is required, and
-        # it must contain the fully qualified name of the transport
-        # implementation
-        transport-class = "my.package.MyTransport"
-
-        # It is possible to decorate Transports with additional services.
-        # Adapters should be registered in the "adapters" sections to
-        # be able to apply them to transports
-        applied-adapters = []
-
-        # Driver specific configuration options has to be in the same
-        # section:
-        some-config = foo
-        another-config = bar
-      }
-
-
 
 Remote Events
 -------------
@@ -379,17 +426,15 @@ holds the direction of the association (inbound or outbound), the addresses of t
 To be notified  when the remoting subsystem is ready to accept associations, listen to ``RemotingListenEvent`` which
 contains the addresses the remoting listens on.
 
+To be notified when the current system is quarantined by the remote system, listen to ``ThisActorSystemQuarantinedEvent``,
+which includes the addresses of local and remote ActorSystems.
+
 To be notified  when the remoting subsystem has been shut down, listen to ``RemotingShutdownEvent``.
 
 To intercept generic remoting related errors, listen to ``RemotingErrorEvent`` which holds the ``Throwable`` cause.
 
 Remote Security
 ^^^^^^^^^^^^^^^
-
-Akka provides a couple of ways to enhance security between remote nodes (client/server):
-
-* Untrusted Mode
-* Security Cookie Handshake
 
 Untrusted Mode
 --------------
@@ -441,23 +486,66 @@ untrusted mode when incoming via the remoting layer:
   within the same JVM), you can restrict the messages on this interface by
   marking them :class:`PossiblyHarmful` so that a client cannot forge them.
 
-SSL
----
+Configuring SSL/TLS for Akka Remoting
+-------------------------------------
 
-SSL can be used as the remote transport by adding ``akka.remote.netty.ssl``
-to the ``enabled-transport`` configuration section. See a description of the settings
-in the :ref:`remote-configuration-scala` section.
+SSL can be used as the remote transport by adding ``akka.remote.netty.ssl`` to the ``enabled-transport`` configuration section.
+An example of setting up the default Netty based SSL driver as default::
 
-The SSL support is implemented with Java Secure Socket Extension, please consult the offical
-`Java Secure Socket Extension documentation <http://docs.oracle.com/javase/7/docs/technotes/guides/security/jsse/JSSERefGuide.html>`_
-and related resources for troubleshooting.
+  akka {
+    remote {
+      enabled-transports = [akka.remote.netty.ssl]
+    }
+  }
+
+Next the actual SSL/TLS parameters have to be configured::
+
+  akka {
+    remote {
+      netty.ssl.security {
+        key-store = "/example/path/to/mykeystore.jks"
+        trust-store = "/example/path/to/mytruststore.jks"
+        
+        key-store-password = "changeme"
+        key-password = "changeme"
+        trust-store-password = "changeme"
+        
+        protocol = "TLSv1.2"
+        
+        enabled-algorithms = [TLS_DHE_RSA_WITH_AES_128_GCM_SHA256]
+        
+        random-number-generator = "AES128CounterSecureRNG"
+      }
+    }
+  }
+
+According to `RFC 7525 <https://tools.ietf.org/html/rfc7525>`_ the recommended algorithms to use with TLS 1.2 (as of writing this document) are:
+
+- TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+- TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+- TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
+- TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+You should always check the latest information about security and algorithm recommendations though before you configure your system.
+
+Creating and working with keystores and certificates is well documented in the 
+`Generating X.509 Certificates <http://typesafehub.github.io/ssl-config/CertificateGeneration.html#using-keytool>`_
+section of Lightbend's SSL-Config library. 
+
+Since an Akka remoting is inherently :ref:`peer-to-peer <symmetric-communication>` both the key-store as well as trust-store 
+need to be configured on each remoting node participating in the cluster.
+
+The official `Java Secure Socket Extension documentation <http://docs.oracle.com/javase/7/docs/technotes/guides/security/jsse/JSSERefGuide.html>`_
+as well as the `Oracle documentation on creating KeyStore and TrustStores <https://docs.oracle.com/cd/E19509-01/820-3503/6nf1il6er/index.html>`_
+are both great resources to research when setting up security on the JVM. Please consult those resources when troubleshooting
+and configuring SSL.
+
+See also a description of the settings in the :ref:`remote-configuration-scala` section.
 
 .. note::
 
-  When using SHA1PRNG on Linux it's recommended specify ``-Djava.security.egd=file:/dev/./urandom`` as argument
+  When using SHA1PRNG on Linux it's recommended specify ``-Djava.security.egd=file:/dev/urandom`` as argument
   to the JVM to prevent blocking. It is NOT as secure because it reuses the seed.
-  Use '/dev/./urandom', not '/dev/urandom' as that doesn't work according to
-  `Bug ID: 6202721 <http://bugs.sun.com/view_bug.do?bug_id=6202721>`_.
 
 .. _remote-configuration-scala:
 
@@ -474,3 +562,27 @@ There are lots of configuration properties that are related to remoting in Akka.
 
    .. includecode:: ../java/code/docs/remoting/RemoteDeploymentDocTest.java#programmatic
 
+
+.. _remote-configuration-nat:
+
+Akka behind NAT or in a Docker container
+----------------------------------------
+
+In setups involving Network Address Translation (NAT), Load Balancers or Docker
+containers the hostname and port pair that Akka binds to will be different than the "logical"
+host name and port pair that is used to connect to the system from the outside. This requires
+special configuration that sets both the logical and the bind pairs for remoting.
+
+.. code-block:: ruby
+
+  akka {
+    remote {
+      netty.tcp {
+        hostname = my.domain.com      # external (logical) hostname
+        port = 8000                   # external (logical) port
+
+        bind-hostname = local.address # internal (bind) hostname
+        bind-port = 2552              # internal (bind) port
+      }
+   }
+  }

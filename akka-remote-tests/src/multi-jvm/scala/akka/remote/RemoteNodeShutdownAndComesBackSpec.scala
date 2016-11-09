@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -30,8 +30,7 @@ object RemoteNodeShutdownAndComesBackSpec extends MultiNodeConfig {
       akka.remote.transport-failure-detector.heartbeat-interval = 1 s
       akka.remote.transport-failure-detector.acceptable-heartbeat-pause = 3 s
       akka.remote.watch-failure-detector.acceptable-heartbeat-pause = 60 s
-      akka.remote.gate-invalid-addresses-for = 0.5 s
-                              """)))
+    """)))
 
   testTransport(on = true)
 
@@ -48,8 +47,7 @@ class RemoteNodeShutdownAndComesBackMultiJvmNode1 extends RemoteNodeShutdownAndC
 class RemoteNodeShutdownAndComesBackMultiJvmNode2 extends RemoteNodeShutdownAndComesBackSpec
 
 abstract class RemoteNodeShutdownAndComesBackSpec
-  extends MultiNodeSpec(RemoteNodeShutdownAndComesBackSpec)
-  with STMultiNodeSpec with ImplicitSender {
+  extends RemotingMultiNodeSpec(RemoteNodeShutdownAndComesBackSpec) {
 
   import RemoteNodeShutdownAndComesBackSpec._
 
@@ -111,16 +109,16 @@ abstract class RemoteNodeShutdownAndComesBackSpec
         expectTerminated(subject)
 
         // Establish watch with the new system. This triggers additional system message traffic. If buffers are out
-        // of synch the remote system will be quarantined and the rest of the test will fail (or even in earlier
+        // of sync the remote system will be quarantined and the rest of the test will fail (or even in earlier
         // stages depending on circumstances).
         system.actorSelection(RootActorPath(secondAddress) / "user" / "subject") ! Identify("subject")
         val subjectNew = expectMsgType[ActorIdentity].ref.get
         watch(subjectNew)
 
         subjectNew ! "shutdown"
-        fishForMessage(5.seconds) {
-          case _: ActorIdentity       ⇒ false
-          case Terminated(subjectNew) ⇒ true
+        // we are waiting for a Terminated here, but it is ok if it does not arrive
+        receiveWhile(5.seconds) {
+          case _: ActorIdentity ⇒ true
         }
       }
 
@@ -136,11 +134,9 @@ abstract class RemoteNodeShutdownAndComesBackSpec
         Await.ready(system.whenTerminated, 30.seconds)
 
         val freshSystem = ActorSystem(system.name, ConfigFactory.parseString(s"""
-                    akka.remote.netty.tcp {
-                      hostname = ${addr.host.get}
-                      port = ${addr.port.get}
-                    }
-                    """).withFallback(system.settings.config))
+          akka.remote.netty.tcp.port = ${addr.port.get}
+          akka.remote.artery.canonical.port = ${addr.port.get}
+          """).withFallback(system.settings.config))
         freshSystem.actorOf(Props[Subject], "subject")
 
         Await.ready(freshSystem.whenTerminated, 30.seconds)

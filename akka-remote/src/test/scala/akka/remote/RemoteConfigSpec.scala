@@ -1,21 +1,19 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
 import language.postfixOps
 import akka.testkit.AkkaSpec
-import akka.actor.ExtendedActorSystem
 import scala.concurrent.duration._
 import akka.remote.transport.AkkaProtocolSettings
-import akka.util.{ Timeout, Helpers }
+import akka.util.{ Helpers }
 import akka.util.Helpers.ConfigOps
 import akka.remote.transport.netty.{ NettyTransportSettings, SSLSettings }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class RemoteConfigSpec extends AkkaSpec(
   """
-    akka.actor.provider = "akka.remote.RemoteActorRefProvider"
+    akka.actor.provider = remote
     akka.remote.netty.tcp.port = 0
   """) {
 
@@ -39,7 +37,8 @@ class RemoteConfigSpec extends AkkaSpec(
       LogBufferSizeExceeding should ===(50000)
       SysMsgAckTimeout should ===(0.3 seconds)
       SysResendTimeout should ===(2 seconds)
-      SysMsgBufferSize should ===(1000)
+      SysResendLimit should ===(200)
+      SysMsgBufferSize should ===(20000)
       InitialSysMsgDeliveryTimeout should ===(3 minutes)
       QuarantineDuration should ===(5 days)
       CommandAckTimeout.duration should ===(30 seconds)
@@ -47,12 +46,12 @@ class RemoteConfigSpec extends AkkaSpec(
       Transports.head._1 should ===(classOf[akka.remote.transport.netty.NettyTransport].getName)
       Transports.head._2 should ===(Nil)
       Adapters should ===(Map(
-        "gremlin" -> classOf[akka.remote.transport.FailureInjectorProvider].getName,
-        "trttl" -> classOf[akka.remote.transport.ThrottlerProvider].getName))
+        "gremlin" → classOf[akka.remote.transport.FailureInjectorProvider].getName,
+        "trttl" → classOf[akka.remote.transport.ThrottlerProvider].getName))
 
       WatchFailureDetectorImplementationClass should ===(classOf[PhiAccrualFailureDetector].getName)
       WatchHeartBeatInterval should ===(1 seconds)
-      WatchHeartbeatExpectedResponseAfter should ===(3 seconds)
+      WatchHeartbeatExpectedResponseAfter should ===(1 seconds)
       WatchUnreachableReaperInterval should ===(1 second)
       WatchFailureDetectorConfig.getDouble("threshold") should ===(10.0 +- 0.0001)
       WatchFailureDetectorConfig.getInt("max-sample-size") should ===(200)
@@ -71,7 +70,7 @@ class RemoteConfigSpec extends AkkaSpec(
 
       TransportFailureDetectorImplementationClass should ===(classOf[DeadlineFailureDetector].getName)
       TransportHeartBeatInterval should ===(4.seconds)
-      TransportFailureDetectorConfig.getMillisDuration("acceptable-heartbeat-pause") should ===(20 seconds)
+      TransportFailureDetectorConfig.getMillisDuration("acceptable-heartbeat-pause") should ===(16.seconds)
 
     }
 
@@ -81,6 +80,8 @@ class RemoteConfigSpec extends AkkaSpec(
       import s._
 
       ConnectionTimeout should ===(15.seconds)
+      ConnectionTimeout should ===(new AkkaProtocolSettings(RARP(system).provider.remoteSettings.config)
+        .HandshakeTimeout)
       WriteBufferHighWaterMark should ===(None)
       WriteBufferLowWaterMark should ===(None)
       SendBufferSize should ===(Some(256000))
@@ -121,14 +122,14 @@ class RemoteConfigSpec extends AkkaSpec(
 
     "contain correct ssl configuration values in reference.conf" in {
       val sslSettings = new SSLSettings(system.settings.config.getConfig("akka.remote.netty.ssl.security"))
-      sslSettings.SSLKeyStore should ===(Some("keystore"))
-      sslSettings.SSLKeyStorePassword should ===(Some("changeme"))
-      sslSettings.SSLKeyPassword should ===(Some("changeme"))
-      sslSettings.SSLTrustStore should ===(Some("truststore"))
-      sslSettings.SSLTrustStorePassword should ===(Some("changeme"))
-      sslSettings.SSLProtocol should ===(Some("TLSv1"))
+      sslSettings.SSLKeyStore should ===("keystore")
+      sslSettings.SSLKeyStorePassword should ===("changeme")
+      sslSettings.SSLKeyPassword should ===("changeme")
+      sslSettings.SSLTrustStore should ===("truststore")
+      sslSettings.SSLTrustStorePassword should ===("changeme")
+      sslSettings.SSLProtocol should ===("TLSv1.2")
       sslSettings.SSLEnabledAlgorithms should ===(Set("TLS_RSA_WITH_AES_128_CBC_SHA"))
-      sslSettings.SSLRandomNumberGenerator should ===(None)
+      sslSettings.SSLRandomNumberGenerator should ===("")
     }
 
     "have debug logging of the failure injector turned off in reference.conf" in {

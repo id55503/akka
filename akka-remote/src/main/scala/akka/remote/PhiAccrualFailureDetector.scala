@@ -1,11 +1,10 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
 import akka.remote.FailureDetector.Clock
 import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration.FiniteDuration
@@ -16,7 +15,7 @@ import akka.util.Helpers.ConfigOps
 
 /**
  * Implementation of 'The Phi Accrual Failure Detector' by Hayashibara et al. as defined in their paper:
- * [http://ddg.jaist.ac.jp/pub/HDY+04.pdf]
+ * [http://www.jaist.ac.jp/~defago/files/pdf/IS_RR_2004_010.pdf]
  *
  * The suspicion level of failure is given by a value called φ (phi).
  * The basic idea of the φ failure detector is to express the value of φ on a scale that
@@ -55,12 +54,13 @@ import akka.util.Helpers.ConfigOps
  *   purposes. It is only used for measuring intervals (duration).
  */
 class PhiAccrualFailureDetector(
-  val threshold: Double,
-  val maxSampleSize: Int,
-  val minStdDeviation: FiniteDuration,
+  val threshold:                Double,
+  val maxSampleSize:            Int,
+  val minStdDeviation:          FiniteDuration,
   val acceptableHeartbeatPause: FiniteDuration,
-  val firstHeartbeatEstimate: FiniteDuration)(
-    implicit clock: Clock) extends FailureDetector {
+  val firstHeartbeatEstimate:   FiniteDuration)(
+  implicit
+  clock: Clock) extends FailureDetector {
 
   /**
    * Constructor that reads parameters from config.
@@ -186,7 +186,7 @@ private[akka] object HeartbeatHistory {
    * Create an empty HeartbeatHistory, without any history.
    * Can only be used as starting point for appending intervals.
    * The stats (mean, variance, stdDeviation) are not defined for
-   * for empty HeartbeatHistory, i.e. throws AritmeticException.
+   * for empty HeartbeatHistory, i.e. throws ArithmeticException.
    */
   def apply(maxSampleSize: Int): HeartbeatHistory = HeartbeatHistory(
     maxSampleSize = maxSampleSize,
@@ -201,12 +201,12 @@ private[akka] object HeartbeatHistory {
  * It is capped by the number of samples specified in `maxSampleSize`.
  *
  * The stats (mean, variance, stdDeviation) are not defined for
- * for empty HeartbeatHistory, i.e. throws AritmeticException.
+ * for empty HeartbeatHistory, i.e. throws ArithmeticException.
  */
 private[akka] final case class HeartbeatHistory private (
-  maxSampleSize: Int,
-  intervals: immutable.IndexedSeq[Long],
-  intervalSum: Long,
+  maxSampleSize:      Int,
+  intervals:          immutable.IndexedSeq[Long],
+  intervalSum:        Long,
   squaredIntervalSum: Long) {
 
   // Heartbeat histories are created trough the firstHeartbeat variable of the PhiAccrualFailureDetector

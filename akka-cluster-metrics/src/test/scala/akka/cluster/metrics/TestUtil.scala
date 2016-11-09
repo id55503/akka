@@ -1,20 +1,18 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.metrics
 
 import scala.language.postfixOps
 import java.util.logging.LogManager
+
 import org.slf4j.bridge.SLF4JBridgeHandler
 import akka.testkit.AkkaSpec
 import akka.actor.ExtendedActorSystem
 import akka.actor.Address
-import akka.cluster.MemberStatus
-import akka.cluster.Member
-import akka.cluster.UniqueAddress
-import akka.cluster.Cluster
 import java.io.Closeable
+
 import akka.actor.ActorRef
 import akka.actor.Props
 import akka.actor.Actor
@@ -26,6 +24,7 @@ import akka.actor.ActorLogging
 import org.scalatest.mock.MockitoSugar
 import akka.actor.ActorSystem
 import akka.dispatch.Dispatchers
+import akka.remote.RARP
 
 /**
  * Redirect different logging sources to SLF4J.
@@ -53,11 +52,11 @@ case class SimpleSigarProvider(location: String = "native") extends SigarProvide
  * Provide sigar library as static mock.
  */
 case class MockitoSigarProvider(
-  pid: Long = 123,
+  pid:         Long          = 123,
   loadAverage: Array[Double] = Array(0.7, 0.3, 0.1),
-  cpuCombined: Double = 0.5,
-  cpuStolen: Double = 0.2,
-  steps: Int = 5) extends SigarProvider with MockitoSugar {
+  cpuCombined: Double        = 0.5,
+  cpuStolen:   Double        = 0.2,
+  steps:       Int           = 5) extends SigarProvider with MockitoSugar {
 
   import org.hyperic.sigar._
   import org.mockito.Mockito._
@@ -136,7 +135,7 @@ trait MetricsCollectorFactory { this: AkkaSpec ⇒
  */
 class MockitoSigarMetricsCollector(system: ActorSystem)
   extends SigarMetricsCollector(
-    Address("akka.tcp", system.name),
+    Address(if (RARP(system).provider.remoteSettings.Artery.Enabled) "akka" else "akka.tcp", system.name),
     MetricsConfig.defaultDecayFactor,
     MockitoSigarProvider().createSigarInstance) {
 }
@@ -157,7 +156,7 @@ object MetricsConfig {
         gossip-interval = 1s
       }
     }
-    akka.actor.provider = "akka.remote.RemoteActorRefProvider"
+    akka.actor.provider = remote
   """
 
   /** Test w/o cluster, with collection disabled. */
@@ -167,7 +166,7 @@ object MetricsConfig {
         enabled = off
       }
     }
-    akka.actor.provider = "akka.remote.RemoteActorRefProvider"
+    akka.actor.provider = remote
   """
 
   /** Test in cluster, with manual collection activation, collector mock, fast. */
@@ -182,7 +181,7 @@ object MetricsConfig {
         fallback = false
       }
     }
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = "cluster"
   """
 }
 

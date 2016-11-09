@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.transport
 
@@ -8,8 +8,9 @@ import akka.actor.{ AddressFromURIString, InternalActorRef, Address, ActorRef }
 import akka.remote.WireFormats._
 import akka.remote._
 import akka.util.ByteString
-import com.google.protobuf.InvalidProtocolBufferException
-import com.google.protobuf.{ ByteString ⇒ PByteString }
+import akka.protobuf.InvalidProtocolBufferException
+import akka.protobuf.{ ByteString ⇒ PByteString }
+import akka.util.OptionVal
 
 /**
  * INTERNAL API
@@ -34,11 +35,12 @@ private[remote] object AkkaPduCodec {
   case object Heartbeat extends AkkaPdu
   final case class Payload(bytes: ByteString) extends AkkaPdu
 
-  final case class Message(recipient: InternalActorRef,
-                           recipientAddress: Address,
-                           serializedMessage: SerializedMessage,
-                           senderOption: Option[ActorRef],
-                           seqOption: Option[SeqNo]) extends HasSequenceNumber {
+  final case class Message(
+    recipient:         InternalActorRef,
+    recipientAddress:  Address,
+    serializedMessage: SerializedMessage,
+    senderOption:      OptionVal[ActorRef],
+    seqOption:         Option[SeqNo]) extends HasSequenceNumber {
 
     def reliableDeliveryEnabled = seqOption.isDefined
 
@@ -93,12 +95,12 @@ private[remote] trait AkkaPduCodec {
   def decodeMessage(raw: ByteString, provider: RemoteActorRefProvider, localAddress: Address): (Option[Ack], Option[Message])
 
   def constructMessage(
-    localAddress: Address,
-    recipient: ActorRef,
+    localAddress:      Address,
+    recipient:         ActorRef,
     serializedMessage: SerializedMessage,
-    senderOption: Option[ActorRef],
-    seqOption: Option[SeqNo] = None,
-    ackOption: Option[Ack] = None): ByteString
+    senderOption:      OptionVal[ActorRef],
+    seqOption:         Option[SeqNo]       = None,
+    ackOption:         Option[Ack]         = None): ByteString
 
   def constructPureAck(ack: Ack): ByteString
 }
@@ -117,19 +119,23 @@ private[remote] object AkkaPduProtobufCodec extends AkkaPduCodec {
   }
 
   override def constructMessage(
-    localAddress: Address,
-    recipient: ActorRef,
+    localAddress:      Address,
+    recipient:         ActorRef,
     serializedMessage: SerializedMessage,
-    senderOption: Option[ActorRef],
-    seqOption: Option[SeqNo] = None,
-    ackOption: Option[Ack] = None): ByteString = {
+    senderOption:      OptionVal[ActorRef],
+    seqOption:         Option[SeqNo]       = None,
+    ackOption:         Option[Ack]         = None): ByteString = {
 
     val ackAndEnvelopeBuilder = AckAndEnvelopeContainer.newBuilder
 
     val envelopeBuilder = RemoteEnvelope.newBuilder
 
     envelopeBuilder.setRecipient(serializeActorRef(recipient.path.address, recipient))
-    senderOption foreach { ref ⇒ envelopeBuilder.setSender(serializeActorRef(localAddress, ref)) }
+    senderOption match {
+      case OptionVal.Some(sender) ⇒ envelopeBuilder.setSender(serializeActorRef(localAddress, sender))
+      case OptionVal.None         ⇒
+    }
+
     seqOption foreach { seq ⇒ envelopeBuilder.setSeq(seq.rawValue) }
     ackOption foreach { ack ⇒ ackAndEnvelopeBuilder.setAck(ackBuilder(ack)) }
     envelopeBuilder.setMessage(serializedMessage)
@@ -145,7 +151,7 @@ private[remote] object AkkaPduProtobufCodec extends AkkaPduCodec {
     ByteString.ByteString1C(AkkaProtocolMessage.newBuilder().setPayload(PByteString.copyFrom(payload.asByteBuffer)).build.toByteArray) //Reuse Byte Array (naughty!)
 
   override def constructAssociate(info: HandshakeInfo): ByteString = {
-    val handshakeInfo = AkkaHandshakeInfo.newBuilder.setOrigin(serializeAddress(info.origin)).setUid(info.uid)
+    val handshakeInfo = AkkaHandshakeInfo.newBuilder.setOrigin(serializeAddress(info.origin)).setUid(info.uid.toLong)
     info.cookie foreach handshakeInfo.setCookie
     constructControlMessagePdu(WireFormats.CommandType.ASSOCIATE, Some(handshakeInfo))
   }
@@ -175,8 +181,8 @@ private[remote] object AkkaPduProtobufCodec extends AkkaPduCodec {
   }
 
   override def decodeMessage(
-    raw: ByteString,
-    provider: RemoteActorRefProvider,
+    raw:          ByteString,
+    provider:     RemoteActorRefProvider,
     localAddress: Address): (Option[Ack], Option[Message]) = {
     val ackAndEnvelope = AckAndEnvelopeContainer.parseFrom(raw.toArray)
 
@@ -192,8 +198,8 @@ private[remote] object AkkaPduProtobufCodec extends AkkaPduCodec {
         recipientAddress = AddressFromURIString(msgPdu.getRecipient.getPath),
         serializedMessage = msgPdu.getMessage,
         senderOption =
-          if (msgPdu.hasSender) Some(provider.resolveActorRefWithLocalAddress(msgPdu.getSender.getPath, localAddress))
-          else None,
+          if (msgPdu.hasSender) OptionVal(provider.resolveActorRefWithLocalAddress(msgPdu.getSender.getPath, localAddress))
+          else OptionVal.None,
         seqOption =
           if (msgPdu.hasSeq) Some(SeqNo(msgPdu.getSeq)) else None))
     } else None
@@ -225,7 +231,7 @@ private[remote] object AkkaPduProtobufCodec extends AkkaPduCodec {
     Address(encodedAddress.getProtocol, encodedAddress.getSystem, encodedAddress.getHostname, encodedAddress.getPort)
 
   private def constructControlMessagePdu(
-    code: WireFormats.CommandType,
+    code:          WireFormats.CommandType,
     handshakeInfo: Option[AkkaHandshakeInfo.Builder]): ByteString = {
 
     val controlMessageBuilder = AkkaControlMessage.newBuilder()

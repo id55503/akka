@@ -1,49 +1,32 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.routing
 
-import language.postfixOps
-import scala.collection.immutable
-import akka.actor.Actor
-import akka.actor.ActorRef
-import akka.actor.Props
-import akka.actor.PoisonPill
-import akka.actor.Address
-import scala.concurrent.Await
+import akka.actor.{ Actor, ActorRef, Address, PoisonPill, Props }
 import akka.pattern.ask
-import akka.remote.testkit.{ STMultiNodeSpec, MultiNodeConfig, MultiNodeSpec }
-import akka.routing.Broadcast
-import akka.routing.GetRoutees
-import akka.routing.Routees
-import akka.routing.RoundRobinPool
-import akka.routing.RoundRobinGroup
-import akka.routing.RoutedActorRef
-import akka.routing.Resizer
-import akka.routing.Routee
-import akka.routing.FromConfig
+import akka.remote.RemotingMultiNodeSpec
+import akka.remote.testkit.MultiNodeConfig
+import akka.routing._
 import akka.testkit._
+import com.typesafe.config.ConfigFactory
+
+import scala.collection.immutable
+import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.language.postfixOps
 
-object RemoteRoundRobinMultiJvmSpec extends MultiNodeConfig {
-
-  class SomeActor extends Actor {
-    def receive = {
-      case "hit" ⇒ sender() ! self
-    }
-  }
-
-  class TestResizer extends Resizer {
-    override def isTimeForResize(messageCounter: Long): Boolean = messageCounter <= 10
-    override def resize(currentRoutees: immutable.IndexedSeq[Routee]): Int = 1
-  }
+class RemoteRoundRobinConfig(artery: Boolean) extends MultiNodeConfig {
 
   val first = role("first")
   val second = role("second")
   val third = role("third")
   val fourth = role("fourth")
 
-  commonConfig(debugConfig(on = false))
+  commonConfig(debugConfig(on = false).withFallback(
+    ConfigFactory.parseString(s"""
+      akka.remote.artery.enabled = $artery
+      """)).withFallback(RemotingMultiNodeSpec.arteryFlightRecordingConf))
 
   deployOnAll("""
       /service-hello {
@@ -56,7 +39,7 @@ object RemoteRoundRobinMultiJvmSpec extends MultiNodeConfig {
         router = round-robin-pool
         target.nodes = ["@first@", "@second@", "@third@"]
       }
-      
+
       /service-hello3 {
         router = round-robin-group
         routees.paths = [
@@ -67,14 +50,33 @@ object RemoteRoundRobinMultiJvmSpec extends MultiNodeConfig {
     """)
 }
 
-class RemoteRoundRobinMultiJvmNode1 extends RemoteRoundRobinSpec
-class RemoteRoundRobinMultiJvmNode2 extends RemoteRoundRobinSpec
-class RemoteRoundRobinMultiJvmNode3 extends RemoteRoundRobinSpec
-class RemoteRoundRobinMultiJvmNode4 extends RemoteRoundRobinSpec
+class RemoteRoundRobinMultiJvmNode1 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = false))
+class RemoteRoundRobinMultiJvmNode2 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = false))
+class RemoteRoundRobinMultiJvmNode3 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = false))
+class RemoteRoundRobinMultiJvmNode4 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = false))
 
-class RemoteRoundRobinSpec extends MultiNodeSpec(RemoteRoundRobinMultiJvmSpec)
-  with STMultiNodeSpec with ImplicitSender with DefaultTimeout {
-  import RemoteRoundRobinMultiJvmSpec._
+class ArteryRemoteRoundRobinMultiJvmNode1 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = true))
+class ArteryRemoteRoundRobinMultiJvmNode2 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = true))
+class ArteryRemoteRoundRobinMultiJvmNode3 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = true))
+class ArteryRemoteRoundRobinMultiJvmNode4 extends RemoteRoundRobinSpec(new RemoteRoundRobinConfig(artery = true))
+
+object RemoteRoundRobinSpec {
+  class SomeActor extends Actor {
+    def receive = {
+      case "hit" ⇒ sender() ! self
+    }
+  }
+
+  class TestResizer extends Resizer {
+    override def isTimeForResize(messageCounter: Long): Boolean = messageCounter <= 10
+    override def resize(currentRoutees: immutable.IndexedSeq[Routee]): Int = 1
+  }
+}
+
+class RemoteRoundRobinSpec(multiNodeConfig: RemoteRoundRobinConfig) extends RemotingMultiNodeSpec(multiNodeConfig)
+  with DefaultTimeout {
+  import RemoteRoundRobinSpec._
+  import multiNodeConfig._
 
   def initialParticipants = roles.size
 
@@ -99,8 +101,8 @@ class RemoteRoundRobinSpec extends MultiNodeSpec(RemoteRoundRobinMultiJvmSpec)
 
         val replies: Map[Address, Int] = (receiveWhile(5 seconds, messages = connectionCount * iterationCount) {
           case ref: ActorRef ⇒ ref.path.address
-        }).foldLeft(Map(node(first).address -> 0, node(second).address -> 0, node(third).address -> 0)) {
-          case (replyMap, address) ⇒ replyMap + (address -> (replyMap(address) + 1))
+        }).foldLeft(Map(node(first).address → 0, node(second).address → 0, node(third).address → 0)) {
+          case (replyMap, address) ⇒ replyMap + (address → (replyMap(address) + 1))
         }
 
         enterBarrier("broadcast-end")
@@ -134,7 +136,7 @@ class RemoteRoundRobinSpec extends MultiNodeSpec(RemoteRoundRobinMultiJvmSpec)
         actor.isInstanceOf[RoutedActorRef] should ===(true)
 
         actor ! GetRoutees
-        // initial nrOfInstances 1 + inital resize => 2
+        // initial nrOfInstances 1 + initial resize => 2
         expectMsgType[Routees].routees.size should ===(2)
 
         val repliesFrom: Set[ActorRef] =
@@ -184,8 +186,8 @@ class RemoteRoundRobinSpec extends MultiNodeSpec(RemoteRoundRobinMultiJvmSpec)
 
         val replies: Map[Address, Int] = (receiveWhile(5 seconds, messages = connectionCount * iterationCount) {
           case ref: ActorRef ⇒ ref.path.address
-        }).foldLeft(Map(node(first).address -> 0, node(second).address -> 0, node(third).address -> 0)) {
-          case (replyMap, address) ⇒ replyMap + (address -> (replyMap(address) + 1))
+        }).foldLeft(Map(node(first).address → 0, node(second).address → 0, node(third).address → 0)) {
+          case (replyMap, address) ⇒ replyMap + (address → (replyMap(address) + 1))
         }
 
         enterBarrier("end")

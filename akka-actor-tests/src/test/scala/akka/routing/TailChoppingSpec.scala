@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.routing
 
@@ -27,7 +27,6 @@ object TailChoppingSpec {
     }), "Actor:" + id)
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class TailChoppingSpec extends AkkaSpec with DefaultTimeout with ImplicitSender {
   import TailChoppingSpec._
 

@@ -1,25 +1,25 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
 import com.typesafe.config.Config
 import scala.concurrent.duration._
-import java.util.concurrent.TimeUnit.MILLISECONDS
 import akka.util.Timeout
 import scala.collection.immutable
-import akka.util.Helpers.ConfigOps
-import akka.util.Helpers.Requiring
+import akka.util.Helpers.{ ConfigOps, Requiring, toRootLowerCase }
 import akka.japi.Util._
 import akka.actor.Props
 import akka.event.Logging
 import akka.event.Logging.LogLevel
 import akka.ConfigurationException
-import java.util.Locale
+import akka.remote.artery.ArterySettings
 
 final class RemoteSettings(val config: Config) {
   import config._
   import scala.collection.JavaConverters._
+
+  val Artery = ArterySettings(getConfig("akka.remote.artery"))
 
   val LogReceive: Boolean = getBoolean("akka.remote.log-received-messages")
 
@@ -30,7 +30,7 @@ final class RemoteSettings(val config: Config) {
   val TrustedSelectionPaths: Set[String] =
     immutableSeq(getStringList("akka.remote.trusted-selection-paths")).toSet
 
-  val RemoteLifecycleEventsLogLevel: LogLevel = getString("akka.remote.log-remote-lifecycle-events").toLowerCase(Locale.ROOT) match {
+  val RemoteLifecycleEventsLogLevel: LogLevel = toRootLowerCase(getString("akka.remote.log-remote-lifecycle-events")) match {
     case "on" ⇒ Logging.DebugLevel
     case other ⇒ Logging.levelFor(other) match {
       case Some(level) ⇒ level
@@ -80,6 +80,10 @@ final class RemoteSettings(val config: Config) {
     config.getMillisDuration("akka.remote.resend-interval")
   } requiring (_ > Duration.Zero, "resend-interval must be > 0")
 
+  val SysResendLimit: Int = {
+    config.getInt("akka.remote.resend-limit")
+  } requiring (_ > 0, "resend-limit must be > 0")
+
   val SysMsgBufferSize: Int = {
     getInt("akka.remote.system-message-buffer-size")
   } requiring (_ > 0, "system-message-buffer-size must be > 0")
@@ -88,8 +92,13 @@ final class RemoteSettings(val config: Config) {
     config.getMillisDuration("akka.remote.initial-system-message-delivery-timeout")
   } requiring (_ > Duration.Zero, "initial-system-message-delivery-timeout must be > 0")
 
+  val QuarantineSilentSystemTimeout: FiniteDuration = {
+    config.getMillisDuration("akka.remote.quarantine-after-silence")
+  } requiring (_ > Duration.Zero, "quarantine-after-silence must be > 0")
+
   val QuarantineDuration: FiniteDuration = {
-    config.getMillisDuration("akka.remote.prune-quarantine-marker-after").requiring(_ > Duration.Zero,
+    config.getMillisDuration("akka.remote.prune-quarantine-marker-after").requiring(
+      _ > Duration.Zero,
       "prune-quarantine-marker-after must be > 0 ms")
   }
 
@@ -111,7 +120,8 @@ final class RemoteSettings(val config: Config) {
 
   val Transports: immutable.Seq[(String, immutable.Seq[String], Config)] = transportNames.map { name ⇒
     val transportConfig = transportConfigFor(name)
-    (transportConfig.getString("transport-class"),
+    (
+      transportConfig.getString("transport-class"),
       immutableSeq(transportConfig.getStringList("applied-adapters")).reverse,
       transportConfig)
   }

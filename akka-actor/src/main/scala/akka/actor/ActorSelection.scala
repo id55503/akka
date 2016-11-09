@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -10,7 +10,6 @@ import scala.concurrent.Future
 import scala.concurrent.Promise
 import scala.concurrent.duration._
 import scala.util.Success
-import scala.util.Failure
 import java.util.regex.Pattern
 import akka.pattern.ask
 import akka.routing.MurmurHash
@@ -219,7 +218,8 @@ object ActorSelection {
                   if (matchingChildren.isEmpty && !sel.wildcardFanOut)
                     emptyRef.tell(sel, sender)
                   else {
-                    val m = sel.copy(elements = iter.toVector,
+                    val m = sel.copy(
+                      elements = iter.toVector,
                       wildcardFanOut = sel.wildcardFanOut || matchingChildren.size > 1)
                     matchingChildren.foreach(c ⇒ deliverSelection(c.asInstanceOf[InternalActorRef], sender, m))
                   }
@@ -254,8 +254,8 @@ trait ScalaActorSelection {
  */
 @SerialVersionUID(2L) // it has protobuf serialization in akka-remote
 private[akka] final case class ActorSelectionMessage(
-  msg: Any,
-  elements: immutable.Iterable[SelectionPathElement],
+  msg:            Any,
+  elements:       immutable.Iterable[SelectionPathElement],
   wildcardFanOut: Boolean)
   extends AutoReceivedMessage with PossiblyHarmful {
 

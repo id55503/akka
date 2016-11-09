@@ -1,15 +1,15 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
- * Copyright (C) 2012-2013 Eligotech BV.
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+ * Copyright (C) 2012-2016 Eligotech BV.
  */
 
 package akka.persistence.journal.leveldb
 
 import scala.concurrent.Future
-
 import akka.persistence._
 import akka.persistence.journal.AsyncRecovery
 import org.iq80.leveldb.DBIterator
+import akka.persistence.journal.leveldb.LeveldbJournal.ReplayedTaggedMessage
 
 /**
  * INTERNAL API.
@@ -47,7 +47,7 @@ private[persistence] trait LeveldbRecovery extends AsyncRecovery { this: Leveldb
           val msg = persistentFromBytes(nextEntry.getValue)
           val del = deletion(iter, nextKey)
           if (ctr < max) {
-            replayCallback(msg.update(deleted = del))
+            if (!del) replayCallback(msg)
             go(iter, nextKey, ctr + 1L, replayCallback)
           }
         }
@@ -69,6 +69,38 @@ private[persistence] trait LeveldbRecovery extends AsyncRecovery { this: Leveldb
 
     withIterator { iter ⇒
       val startKey = Key(persistenceId, if (fromSequenceNr < 1L) 1L else fromSequenceNr, 0)
+      iter.seek(keyToBytes(startKey))
+      go(iter, startKey, 0L, replayCallback)
+    }
+  }
+
+  def asyncReplayTaggedMessages(tag: String, fromSequenceNr: Long, toSequenceNr: Long, max: Long)(replayCallback: ReplayedTaggedMessage ⇒ Unit): Future[Unit] = {
+    val tagNid = tagNumericId(tag)
+    Future(replayTaggedMessages(tag, tagNid, fromSequenceNr: Long, toSequenceNr, max: Long)(replayCallback))(replayDispatcher)
+  }
+
+  def replayTaggedMessages(tag: String, tagNid: Int, fromSequenceNr: Long, toSequenceNr: Long, max: Long)(
+    replayCallback: ReplayedTaggedMessage ⇒ Unit): Unit = {
+
+    @scala.annotation.tailrec
+    def go(iter: DBIterator, key: Key, ctr: Long, replayCallback: ReplayedTaggedMessage ⇒ Unit) {
+      if (iter.hasNext) {
+        val nextEntry = iter.next()
+        val nextKey = keyFromBytes(nextEntry.getKey)
+        if (nextKey.sequenceNr > toSequenceNr) {
+          // end iteration here
+        } else if (key.persistenceId == nextKey.persistenceId) {
+          val msg = persistentFromBytes(nextEntry.getValue)
+          if (ctr < max) {
+            replayCallback(ReplayedTaggedMessage(msg, tag, nextKey.sequenceNr))
+            go(iter, nextKey, ctr + 1L, replayCallback)
+          }
+        }
+      }
+    }
+
+    withIterator { iter ⇒
+      val startKey = Key(tagNid, if (fromSequenceNr < 1L) 1L else fromSequenceNr, 0)
       iter.seek(keyToBytes(startKey))
       go(iter, startKey, 0L, replayCallback)
     }

@@ -1,7 +1,11 @@
-import akka.{ AkkaBuild, Dependencies, Formatting, Unidoc }
+import akka._
+import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 
-import pl.project13.scala.sbt.SbtJmh._
-import pl.project13.scala.sbt.SbtJmh.JmhKeys._
+enablePlugins(JmhPlugin, ScaladocNoVerificationOfDiagrams)
+disablePlugins(Unidoc, MimaPlugin)
 
-jmhSettings
+AkkaBuild.defaultSettings
 
+AkkaBuild.dontPublishSettings
+AkkaBuild.dontPublishDocsSettings
+Dependencies.benchJmh

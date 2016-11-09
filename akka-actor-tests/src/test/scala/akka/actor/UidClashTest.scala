@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -16,9 +16,10 @@ object UidClashTest {
 
   @volatile var oldActor: ActorRef = _
 
-  private[akka] class EvilCollidingActorRef(override val provider: ActorRefProvider,
-                                            override val path: ActorPath,
-                                            val eventStream: EventStream) extends MinimalActorRef {
+  private[akka] class EvilCollidingActorRef(
+    override val provider: ActorRefProvider,
+    override val path:     ActorPath,
+    val eventStream:       EventStream) extends MinimalActorRef {
 
     //Ignore everything
     override def isTerminated: Boolean = true

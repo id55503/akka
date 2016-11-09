@@ -1,3 +1,2 @@
-enablePlugins(akka.RootSettings)
-
-net.virtualvoid.sbt.graph.Plugin.graphSettings
+enablePlugins(akka.UnidocRoot, akka.TimeStampede, akka.UnidocWithPrValidation)
+disablePlugins(MimaPlugin)

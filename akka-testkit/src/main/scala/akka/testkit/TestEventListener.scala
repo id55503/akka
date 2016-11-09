@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit
 
@@ -8,7 +8,7 @@ import scala.util.matching.Regex
 import scala.collection.immutable
 import scala.concurrent.duration.Duration
 import scala.reflect.ClassTag
-import akka.actor.{ DeadLetter, ActorSystem, Terminated, UnhandledMessage }
+import akka.actor.{ DeadLetter, ActorSystem, UnhandledMessage }
 import akka.dispatch.sysmsg.{ SystemMessage, Terminate }
 import akka.event.Logging.{ Warning, LogEvent, InitializeLogger, Info, Error, Debug, LoggerInitialized }
 import akka.event.Logging
@@ -20,10 +20,10 @@ import akka.util.BoxedType
 /**
  * Implementation helpers of the EventFilter facilities: send `Mute`
  * to the TestEventListener to install a filter, and `UnMute` to
- * deinstall it.
+ * uninstall it.
  *
  * You should always prefer the filter methods in the package object
- * (see [[akka.testkit]] `filterEvents` and `filterException`) or on the
+ * (see `akka.testkit` `filterEvents` and `filterException`) or on the
  * EventFilter implementations.
  */
 sealed trait TestEvent
@@ -31,10 +31,10 @@ sealed trait TestEvent
 /**
  * Implementation helpers of the EventFilter facilities: send <code>Mute</code>
  * to the TestEventFilter to install a filter, and <code>UnMute</code> to
- * deinstall it.
+ * uninstall it.
  *
  * You should always prefer the filter methods in the package object
- * (see [[akka.testkit]] `filterEvents` and `filterException`) or on the
+ * (see `akka.testkit` `filterEvents` and `filterException`) or on the
  * EventFilter implementations.
  */
 object TestEvent {
@@ -95,7 +95,8 @@ abstract class EventFilter(occurrences: Int) {
    * `occurrences` parameter specifies.
    */
   def assertDone(max: Duration): Unit =
-    assert(awaitDone(max),
+    assert(
+      awaitDone(max),
       if (todo > 0) s"$todo messages outstanding on $this"
       else s"received ${-todo} excess messages on $this")
 
@@ -105,7 +106,7 @@ abstract class EventFilter(occurrences: Int) {
    */
   def intercept[T](code: ⇒ T)(implicit system: ActorSystem): T = {
     system.eventStream publish TestEvent.Mute(this)
-    val leeway = TestKitExtension(system).TestEventFilterLeeway
+    val leeway = TestKitExtension(system).TestEventFilterLeeway.dilated
     try {
       val result = code
       if (!awaitDone(leeway))
@@ -141,7 +142,7 @@ abstract class EventFilter(occurrences: Int) {
  * that you can keep your test run’s console output clean and do not miss real
  * error messages.
  *
- * '''Also have a look at the [[akka.testkit]] package object’s `filterEvents` and
+ * '''Also have a look at the `akka.testkit` package object’s `filterEvents` and
  * `filterException` methods.'''
  *
  * The source filters do accept `Class[_]` arguments, matching any
@@ -199,7 +200,8 @@ object EventFilter {
    * source filter).''
    */
   def warning(message: String = null, source: String = null, start: String = "", pattern: String = null, occurrences: Int = Int.MaxValue): EventFilter =
-    WarningFilter(Option(source),
+    WarningFilter(
+      Option(source),
       if (message ne null) Left(message) else Option(pattern) map (new Regex(_)) toRight start,
       message ne null)(occurrences)
 
@@ -218,7 +220,8 @@ object EventFilter {
    * source filter).''
    */
   def info(message: String = null, source: String = null, start: String = "", pattern: String = null, occurrences: Int = Int.MaxValue): EventFilter =
-    InfoFilter(Option(source),
+    InfoFilter(
+      Option(source),
       if (message ne null) Left(message) else Option(pattern) map (new Regex(_)) toRight start,
       message ne null)(occurrences)
 
@@ -237,7 +240,8 @@ object EventFilter {
    * source filter).''
    */
   def debug(message: String = null, source: String = null, start: String = "", pattern: String = null, occurrences: Int = Int.MaxValue): EventFilter =
-    DebugFilter(Option(source),
+    DebugFilter(
+      Option(source),
       if (message ne null) Left(message) else Option(pattern) map (new Regex(_)) toRight start,
       message ne null)(occurrences)
 
@@ -271,9 +275,9 @@ object EventFilter {
  * If you want to match all Error events, the most efficient is to use <code>Left("")</code>.
  */
 final case class ErrorFilter(
-  throwable: Class[_],
-  override val source: Option[String],
-  override val message: Either[String, Regex],
+  throwable:             Class[_],
+  override val source:   Option[String],
+  override val message:  Either[String, Regex],
   override val complete: Boolean)(occurrences: Int) extends EventFilter(occurrences) {
 
   def matches(event: LogEvent) = {
@@ -323,8 +327,8 @@ final case class ErrorFilter(
  * If you want to match all Warning events, the most efficient is to use <code>Left("")</code>.
  */
 final case class WarningFilter(
-  override val source: Option[String],
-  override val message: Either[String, Regex],
+  override val source:   Option[String],
+  override val message:  Either[String, Regex],
   override val complete: Boolean)(occurrences: Int) extends EventFilter(occurrences) {
 
   def matches(event: LogEvent) = {
@@ -350,7 +354,8 @@ final case class WarningFilter(
    *   whether the event’s message must match the given message string or pattern completely
    */
   def this(source: String, message: String, pattern: Boolean, complete: Boolean, occurrences: Int) =
-    this(Option(source),
+    this(
+      Option(source),
       if (message eq null) Left("")
       else if (pattern) Right(new Regex(message))
       else Left(message),
@@ -366,8 +371,8 @@ final case class WarningFilter(
  * If you want to match all Info events, the most efficient is to use <code>Left("")</code>.
  */
 final case class InfoFilter(
-  override val source: Option[String],
-  override val message: Either[String, Regex],
+  override val source:   Option[String],
+  override val message:  Either[String, Regex],
   override val complete: Boolean)(occurrences: Int) extends EventFilter(occurrences) {
 
   def matches(event: LogEvent) = {
@@ -393,7 +398,8 @@ final case class InfoFilter(
    *   whether the event’s message must match the given message string or pattern completely
    */
   def this(source: String, message: String, pattern: Boolean, complete: Boolean, occurrences: Int) =
-    this(Option(source),
+    this(
+      Option(source),
       if (message eq null) Left("")
       else if (pattern) Right(new Regex(message))
       else Left(message),
@@ -409,8 +415,8 @@ final case class InfoFilter(
  * If you want to match all Debug events, the most efficient is to use <code>Left("")</code>.
  */
 final case class DebugFilter(
-  override val source: Option[String],
-  override val message: Either[String, Regex],
+  override val source:   Option[String],
+  override val message:  Either[String, Regex],
   override val complete: Boolean)(occurrences: Int) extends EventFilter(occurrences) {
 
   def matches(event: LogEvent) = {
@@ -436,7 +442,8 @@ final case class DebugFilter(
    *   whether the event’s message must match the given message string or pattern completely
    */
   def this(source: String, message: String, pattern: Boolean, complete: Boolean, occurrences: Int) =
-    this(Option(source),
+    this(
+      Option(source),
       if (message eq null) Left("")
       else if (pattern) Right(new Regex(message))
       else Left(message),

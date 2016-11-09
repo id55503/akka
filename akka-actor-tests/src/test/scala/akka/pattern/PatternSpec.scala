@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.pattern
@@ -8,7 +8,6 @@ import language.postfixOps
 
 import akka.testkit.{ TestLatch, AkkaSpec }
 import akka.actor.{ Props, Actor }
-import java.util.concurrent.TimeoutException
 import scala.concurrent.{ Future, Promise, Await }
 import scala.concurrent.duration._
 
@@ -22,7 +21,6 @@ object PatternSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class PatternSpec extends AkkaSpec("akka.actor.serialize-messages = off") {
   implicit val ec = system.dispatcher
   import PatternSpec._

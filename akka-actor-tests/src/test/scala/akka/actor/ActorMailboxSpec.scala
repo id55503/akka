@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -10,7 +10,6 @@ import akka.dispatch._
 import scala.concurrent.duration.{ Duration, FiniteDuration }
 import akka.ConfigurationException
 import com.typesafe.config.Config
-import java.util.concurrent.TimeUnit
 import akka.util.Helpers.ConfigOps
 
 object ActorMailboxSpec {
@@ -64,6 +63,17 @@ object ActorMailboxSpec {
       mailbox-type = "akka.dispatch.BoundedMailbox"
     }
 
+    bounded-control-aware-mailbox {
+      mailbox-capacity = 1000
+      mailbox-push-timeout-time = 10s
+      mailbox-type = "akka.dispatch.BoundedControlAwareMailbox"
+    }
+
+    unbounded-control-aware-mailbox {
+      mailbox-type = "akka.dispatch.UnboundedControlAwareMailbox"
+    }
+
+
     mc-bounded-mailbox {
       mailbox-capacity = 1000
       mailbox-push-timeout-time = 10s
@@ -77,10 +87,20 @@ object ActorMailboxSpec {
       }
       /default-override-from-trait {
       }
+      /default-override-from-trait-bounded-control-aware {
+      }
+      /default-override-from-trait-unbounded-control-aware {
+      }
       /default-override-from-stash {
       }
       /default-bounded {
         mailbox = bounded-mailbox
+      }
+      /default-bounded-control-aware {
+        mailbox = bounded-control-aware-mailbox
+      }
+      /default-unbounded-control-aware {
+        mailbox = unbounded-control-aware-mailbox
       }
       /default-bounded-mailbox-with-zero-pushtimeout {
         mailbox = bounded-mailbox-with-zero-pushtimeout
@@ -154,26 +174,44 @@ object ActorMailboxSpec {
 
   class BoundedQueueReportingActor extends QueueReportingActor with RequiresMessageQueue[BoundedMessageQueueSemantics]
 
+  class BoundedControlAwareQueueReportingActor extends QueueReportingActor
+    with RequiresMessageQueue[BoundedControlAwareMessageQueueSemantics]
+
+  class UnboundedControlAwareQueueReportingActor extends QueueReportingActor
+    with RequiresMessageQueue[UnboundedControlAwareMessageQueueSemantics]
+
   class StashQueueReportingActor extends QueueReportingActor with Stash
 
   class StashQueueReportingActorWithParams(i: Int, s: String) extends StashQueueReportingActor
 
   val UnboundedMailboxTypes = Seq(classOf[UnboundedMessageQueueSemantics])
   val BoundedMailboxTypes = Seq(classOf[BoundedMessageQueueSemantics])
+
   val UnboundedDeqMailboxTypes = Seq(
     classOf[DequeBasedMessageQueueSemantics],
     classOf[UnboundedMessageQueueSemantics],
     classOf[UnboundedDequeBasedMessageQueueSemantics])
+
   val BoundedDeqMailboxTypes = Seq(
     classOf[DequeBasedMessageQueueSemantics],
     classOf[BoundedMessageQueueSemantics],
     classOf[BoundedDequeBasedMessageQueueSemantics])
 
+  val BoundedControlAwareMailboxTypes = Seq(
+    classOf[BoundedMessageQueueSemantics],
+    classOf[ControlAwareMessageQueueSemantics],
+    classOf[BoundedControlAwareMessageQueueSemantics])
+  val UnboundedControlAwareMailboxTypes = Seq(
+    classOf[UnboundedMessageQueueSemantics],
+    classOf[ControlAwareMessageQueueSemantics],
+    classOf[UnboundedControlAwareMessageQueueSemantics])
+
   trait MCBoundedMessageQueueSemantics extends MessageQueue with MultipleConsumerSemantics
   final case class MCBoundedMailbox(val capacity: Int, val pushTimeOut: FiniteDuration)
     extends MailboxType with ProducesMessageQueue[MCBoundedMessageQueueSemantics] {
 
-    def this(settings: ActorSystem.Settings, config: Config) = this(config.getInt("mailbox-capacity"),
+    def this(settings: ActorSystem.Settings, config: Config) = this(
+      config.getInt("mailbox-capacity"),
       config.getNanosDuration("mailbox-push-timeout-time"))
 
     final override def create(owner: Option[ActorRef], system: Option[ActorSystem]): MessageQueue =
@@ -204,23 +242,29 @@ class ActorMailboxSpec(conf: Config) extends AkkaSpec(conf) with DefaultTimeout 
     }
 
     "get an unbounded deque message queue when it is only configured on the props" in {
-      checkMailboxQueue(Props[QueueReportingActor].withMailbox("akka.actor.mailbox.unbounded-deque-based"),
+      checkMailboxQueue(
+        Props[QueueReportingActor].withMailbox("akka.actor.mailbox.unbounded-deque-based"),
         "default-override-from-props", UnboundedDeqMailboxTypes)
     }
 
     "get an bounded message queue when it's only configured with RequiresMailbox" in {
-      checkMailboxQueue(Props[BoundedQueueReportingActor],
+      checkMailboxQueue(
+        Props[BoundedQueueReportingActor],
         "default-override-from-trait", BoundedMailboxTypes)
     }
 
     "get an unbounded deque message queue when it's only mixed with Stash" in {
-      checkMailboxQueue(Props[StashQueueReportingActor],
+      checkMailboxQueue(
+        Props[StashQueueReportingActor],
         "default-override-from-stash", UnboundedDeqMailboxTypes)
-      checkMailboxQueue(Props(new StashQueueReportingActor),
+      checkMailboxQueue(
+        Props(new StashQueueReportingActor),
         "default-override-from-stash2", UnboundedDeqMailboxTypes)
-      checkMailboxQueue(Props(classOf[StashQueueReportingActorWithParams], 17, "hello"),
+      checkMailboxQueue(
+        Props(classOf[StashQueueReportingActorWithParams], 17, "hello"),
         "default-override-from-stash3", UnboundedDeqMailboxTypes)
-      checkMailboxQueue(Props(new StashQueueReportingActorWithParams(17, "hello")),
+      checkMailboxQueue(
+        Props(new StashQueueReportingActorWithParams(17, "hello")),
         "default-override-from-stash4", UnboundedDeqMailboxTypes)
     }
 
@@ -230,6 +274,26 @@ class ActorMailboxSpec(conf: Config) extends AkkaSpec(conf) with DefaultTimeout 
 
     "get an unbounded deque message queue when it's configured as mailbox" in {
       checkMailboxQueue(Props[QueueReportingActor], "default-unbounded-deque", UnboundedDeqMailboxTypes)
+    }
+
+    "get a bounded control aware message queue when it's configured as mailbox" in {
+      checkMailboxQueue(Props[QueueReportingActor], "default-bounded-control-aware", BoundedControlAwareMailboxTypes)
+    }
+
+    "get an unbounded control aware message queue when it's configured as mailbox" in {
+      checkMailboxQueue(Props[QueueReportingActor], "default-unbounded-control-aware", UnboundedControlAwareMailboxTypes)
+    }
+
+    "get an bounded control aware message queue when it's only configured with RequiresMailbox" in {
+      checkMailboxQueue(
+        Props[BoundedControlAwareQueueReportingActor],
+        "default-override-from-trait-bounded-control-aware", BoundedControlAwareMailboxTypes)
+    }
+
+    "get an unbounded control aware message queue when it's only configured with RequiresMailbox" in {
+      checkMailboxQueue(
+        Props[UnboundedControlAwareQueueReportingActor],
+        "default-override-from-trait-unbounded-control-aware", UnboundedControlAwareMailboxTypes)
     }
 
     "fail to create actor when an unbounded dequeu message queue is configured as mailbox overriding RequestMailbox" in {
@@ -262,7 +326,8 @@ class ActorMailboxSpec(conf: Config) extends AkkaSpec(conf) with DefaultTimeout 
     }
 
     "get an unbounded message queue overriding configuration on the props" in {
-      checkMailboxQueue(Props[QueueReportingActor].withMailbox("akka.actor.mailbox.unbounded-deque-based"),
+      checkMailboxQueue(
+        Props[QueueReportingActor].withMailbox("akka.actor.mailbox.unbounded-deque-based"),
         "bounded-unbounded-override-props", UnboundedMailboxTypes)
     }
 
@@ -346,17 +411,20 @@ class ActorMailboxSpec(conf: Config) extends AkkaSpec(conf) with DefaultTimeout 
     }
 
     "get an unbounded message queue with a balancing dispatcher" in {
-      checkMailboxQueue(Props[QueueReportingActor].withDispatcher("balancing-dispatcher"),
+      checkMailboxQueue(
+        Props[QueueReportingActor].withDispatcher("balancing-dispatcher"),
         "unbounded-balancing", UnboundedMailboxTypes)
     }
 
     "get a bounded message queue with a balancing bounded dispatcher" in {
-      checkMailboxQueue(Props[QueueReportingActor].withDispatcher("balancing-bounded-dispatcher"),
+      checkMailboxQueue(
+        Props[QueueReportingActor].withDispatcher("balancing-bounded-dispatcher"),
         "bounded-balancing", BoundedMailboxTypes)
     }
 
     "get a bounded message queue with a requiring balancing bounded dispatcher" in {
-      checkMailboxQueue(Props[QueueReportingActor].withDispatcher("requiring-balancing-bounded-dispatcher"),
+      checkMailboxQueue(
+        Props[QueueReportingActor].withDispatcher("requiring-balancing-bounded-dispatcher"),
         "requiring-bounded-balancing", BoundedMailboxTypes)
     }
   }

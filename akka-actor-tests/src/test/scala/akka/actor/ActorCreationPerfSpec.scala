@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -10,7 +10,7 @@ import scala.concurrent.duration._
 import akka.testkit.metrics._
 import org.scalatest.BeforeAndAfterAll
 import akka.testkit.metrics.HeapMemoryUsage
-import com.codahale.metrics.{ Timer, Histogram }
+import com.codahale.metrics.{ Histogram }
 
 object ActorCreationPerfSpec {
 
@@ -98,7 +98,6 @@ object ActorCreationPerfSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ActorCreationPerfSpec extends AkkaSpec("akka.actor.serialize-messages = off") with ImplicitSender
   with MetricsKit with BeforeAndAfterAll {
 

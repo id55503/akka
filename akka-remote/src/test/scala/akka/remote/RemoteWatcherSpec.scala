@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -37,10 +37,11 @@ object RemoteWatcherSpec {
 
   object TestRemoteWatcher {
     final case class AddressTerm(address: Address)
-    final case class Quarantined(address: Address, uid: Option[Int])
+    final case class Quarantined(address: Address, uid: Option[Long])
   }
 
-  class TestRemoteWatcher(heartbeatExpectedResponseAfter: FiniteDuration) extends RemoteWatcher(createFailureDetector,
+  class TestRemoteWatcher(heartbeatExpectedResponseAfter: FiniteDuration) extends RemoteWatcher(
+    createFailureDetector,
     heartbeatInterval = TurnOff,
     unreachableReaperInterval = TurnOff,
     heartbeatExpectedResponseAfter = heartbeatExpectedResponseAfter) {
@@ -52,7 +53,7 @@ object RemoteWatcherSpec {
       // that doesn't interfere with the real watch that is going on in the background
       context.system.eventStream.publish(TestRemoteWatcher.AddressTerm(address))
 
-    override def quarantine(address: Address, uid: Option[Int]): Unit = {
+    override def quarantine(address: Address, uid: Option[Long], reason: String): Unit = {
       // don't quarantine in remoting, but publish a testable message
       context.system.eventStream.publish(TestRemoteWatcher.Quarantined(address, uid))
     }
@@ -61,12 +62,11 @@ object RemoteWatcherSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class RemoteWatcherSpec extends AkkaSpec(
   """akka {
        loglevel = INFO
        log-dead-letters-during-shutdown = false
-       actor.provider = "akka.remote.RemoteActorRefProvider"
+       actor.provider = remote
        remote.netty.tcp {
          hostname = localhost
          port = 0

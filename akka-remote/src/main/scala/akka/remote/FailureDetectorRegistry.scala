@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.remote
@@ -32,7 +32,7 @@ trait FailureDetectorRegistry[A] {
 
   /**
    * Records a heartbeat for a resource. If the resource is not yet registered (i.e. this is the first heartbeat) then
-   * it is automatially registered.
+   * it is automatically registered.
    */
   def heartbeat(resource: A): Unit
 
@@ -67,11 +67,11 @@ private[akka] object FailureDetectorLoader {
   def load(fqcn: String, config: Config, system: ActorSystem): FailureDetector = {
     system.asInstanceOf[ExtendedActorSystem].dynamicAccess.createInstanceFor[FailureDetector](
       fqcn, List(
-        classOf[Config] -> config,
-        classOf[EventStream] -> system.eventStream)).recover({
-        case e ⇒ throw new ConfigurationException(
-          s"Could not create custom failure detector [$fqcn] due to: ${e.toString}", e)
-      }).get
+      classOf[Config] → config,
+      classOf[EventStream] → system.eventStream)).recover({
+      case e ⇒ throw new ConfigurationException(
+        s"Could not create custom failure detector [$fqcn] due to: ${e.toString}", e)
+    }).get
   }
 
   /**

@@ -109,7 +109,12 @@ class IncludeCode(Directive):
                     return count
 
         nonempty = filter(lambda l: l.strip(), lines)
-        tabcounts = map(lambda l: countwhile(lambda c: c == ' ', l), nonempty)
+        if not nonempty:
+            return [document.reporter.error(
+                "Snippet ({}#{}) not found!".format(filename, section),
+                line=self.lineno
+            )]
+        tabcounts = list(map(lambda l: countwhile(lambda c: c == ' ', l), nonempty))
         tabshift = min(tabcounts) if tabcounts else 0
 
         if tabshift > 0:

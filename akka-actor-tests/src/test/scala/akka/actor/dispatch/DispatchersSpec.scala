@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor.dispatch
 
@@ -87,7 +87,6 @@ object DispatchersSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class DispatchersSpec extends AkkaSpec(DispatchersSpec.config) with ImplicitSender {
   import DispatchersSpec._
   val df = system.dispatchers
@@ -105,15 +104,15 @@ class DispatchersSpec extends AkkaSpec(DispatchersSpec.config) with ImplicitSend
   def ofType[T <: MessageDispatcher: ClassTag]: (MessageDispatcher) ⇒ Boolean = _.getClass == implicitly[ClassTag[T]].runtimeClass
 
   def typesAndValidators: Map[String, (MessageDispatcher) ⇒ Boolean] = Map(
-    "PinnedDispatcher" -> ofType[PinnedDispatcher],
-    "Dispatcher" -> ofType[Dispatcher])
+    "PinnedDispatcher" → ofType[PinnedDispatcher],
+    "Dispatcher" → ofType[Dispatcher])
 
   def validTypes = typesAndValidators.keys.toList
 
   val defaultDispatcherConfig = settings.config.getConfig("akka.actor.default-dispatcher")
 
   lazy val allDispatchers: Map[String, MessageDispatcher] = {
-    validTypes.map(t ⇒ (t, from(ConfigFactory.parseMap(Map(tipe -> t, id -> t).asJava).
+    validTypes.map(t ⇒ (t, from(ConfigFactory.parseMap(Map(tipe → t, id → t).asJava).
       withFallback(defaultDispatcherConfig)))).toMap
   }
 
@@ -151,7 +150,7 @@ class DispatchersSpec extends AkkaSpec(DispatchersSpec.config) with ImplicitSend
 
     "throw ConfigurationException if type does not exist" in {
       intercept[ConfigurationException] {
-        from(ConfigFactory.parseMap(Map(tipe -> "typedoesntexist", id -> "invalid-dispatcher").asJava).
+        from(ConfigFactory.parseMap(Map(tipe → "typedoesntexist", id → "invalid-dispatcher").asJava).
           withFallback(defaultDispatcherConfig))
       }
     }

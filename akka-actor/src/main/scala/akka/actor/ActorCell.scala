@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -14,9 +14,10 @@ import scala.annotation.{ switch, tailrec }
 import scala.collection.immutable
 import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration.Duration
-import scala.concurrent.forkjoin.ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom
 import scala.util.control.NonFatal
 import akka.dispatch.MessageDispatcher
+import akka.util.Reflect
 
 /**
  * The actor context - the view of the actor cell from the actor.
@@ -67,6 +68,10 @@ trait ActorContext extends ActorRefFactory {
    *
    * Once set, the receive timeout stays in effect (i.e. continues firing repeatedly after inactivity
    * periods). Pass in `Duration.Undefined` to switch off this feature.
+   *
+   * Messages marked with [[NotInfluenceReceiveTimeout]] will not reset the timer. This can be useful when
+   * `ReceiveTimeout` should be fired by external inactivity but not influenced by internal activity,
+   * e.g. scheduled tick messages.
    */
   def setReceiveTimeout(timeout: Duration): Unit
 
@@ -367,11 +372,11 @@ private[akka] object ActorCell {
  * for! (waves hand)
  */
 private[akka] class ActorCell(
-  val system: ActorSystemImpl,
-  val self: InternalActorRef,
+  val system:      ActorSystemImpl,
+  val self:        InternalActorRef,
   final val props: Props, // Must be final so that it can be properly cleared in clearActorCellFields
-  val dispatcher: MessageDispatcher,
-  val parent: InternalActorRef)
+  val dispatcher:  MessageDispatcher,
+  val parent:      InternalActorRef)
   extends UntypedActorContext with AbstractActorContext with Cell
   with dungeon.ReceiveTimeout
   with dungeon.Children
@@ -479,18 +484,23 @@ private[akka] class ActorCell(
   }
 
   //Memory consistency is handled by the Mailbox (reading mailbox status then processing messages, then writing mailbox status
-  final def invoke(messageHandle: Envelope): Unit = try {
-    currentMessage = messageHandle
-    cancelReceiveTimeout() // FIXME: leave this here???
-    messageHandle.message match {
-      case msg: AutoReceivedMessage ⇒ autoReceiveMessage(messageHandle)
-      case msg                      ⇒ receiveMessage(msg)
+  final def invoke(messageHandle: Envelope): Unit = {
+    val influenceReceiveTimeout = !messageHandle.message.isInstanceOf[NotInfluenceReceiveTimeout]
+    try {
+      currentMessage = messageHandle
+      if (influenceReceiveTimeout)
+        cancelReceiveTimeout()
+      messageHandle.message match {
+        case msg: AutoReceivedMessage ⇒ autoReceiveMessage(messageHandle)
+        case msg                      ⇒ receiveMessage(msg)
+      }
+      currentMessage = null // reset current message after successful invocation
+    } catch handleNonFatalOrInterruptedException { e ⇒
+      handleInvokeFailure(Nil, e)
+    } finally {
+      if (influenceReceiveTimeout)
+        checkReceiveTimeout // Reschedule receive timeout
     }
-    currentMessage = null // reset current message after successful invocation
-  } catch handleNonFatalOrInterruptedException { e ⇒
-    handleInvokeFailure(Nil, e)
-  } finally {
-    checkReceiveTimeout // Reschedule receive timeout
   }
 
   def autoReceiveMessage(msg: Envelope): Unit = {
@@ -567,7 +577,7 @@ private[akka] class ActorCell(
   protected def create(failure: Option[ActorInitializationException]): Unit = {
     def clearOutActorIfNonNull(): Unit = {
       if (actor != null) {
-        clearActorFields(actor)
+        clearActorFields(actor, recreate = false)
         actor = null // ensure that we know that we failed during creation
       }
     }
@@ -588,7 +598,8 @@ private[akka] class ActorCell(
       case NonFatal(e) ⇒
         clearOutActorIfNonNull()
         e match {
-          case i: InstantiationException ⇒ throw ActorInitializationException(self,
+          case i: InstantiationException ⇒ throw ActorInitializationException(
+            self,
             """exception during creation, this problem is likely to occur because the class of the Actor you tried to create is either,
                a non-static inner class (in which case make it a static inner class or use Props(new ...) or Props( new Creator ... )
                or is missing an appropriate, reachable no-args constructor.
@@ -611,45 +622,26 @@ private[akka] class ActorCell(
 
   // future extension point
   protected def handleSupervise(child: ActorRef, async: Boolean): Unit = child match {
-    case r: RepointableActorRef if async ⇒ r.point()
+    case r: RepointableActorRef if async ⇒ r.point(catchFailures = true)
     case _                               ⇒
-  }
-
-  @tailrec private final def lookupAndSetField(clazz: Class[_], instance: AnyRef, name: String, value: Any): Boolean = {
-    @tailrec def clearFirst(fields: Array[java.lang.reflect.Field], idx: Int): Boolean =
-      if (idx < fields.length) {
-        val field = fields(idx)
-        if (field.getName == name) {
-          field.setAccessible(true)
-          field.set(instance, value)
-          true
-        } else clearFirst(fields, idx + 1)
-      } else false
-
-    clearFirst(clazz.getDeclaredFields, 0) || {
-      clazz.getSuperclass match {
-        case null ⇒ false // clazz == classOf[AnyRef]
-        case sc   ⇒ lookupAndSetField(sc, instance, name, value)
-      }
-    }
   }
 
   final protected def clearActorCellFields(cell: ActorCell): Unit = {
     cell.unstashAll()
-    if (!lookupAndSetField(classOf[ActorCell], cell, "props", ActorCell.terminatedProps))
+    if (!Reflect.lookupAndSetField(classOf[ActorCell], cell, "props", ActorCell.terminatedProps))
       throw new IllegalArgumentException("ActorCell has no props field")
   }
 
-  final protected def clearActorFields(actorInstance: Actor): Unit = {
-    setActorFields(actorInstance, context = null, self = system.deadLetters)
+  final protected def clearActorFields(actorInstance: Actor, recreate: Boolean): Unit = {
+    setActorFields(actorInstance, context = null, self = if (recreate) self else system.deadLetters)
     currentMessage = null
     behaviorStack = emptyBehaviorStack
   }
 
   final protected def setActorFields(actorInstance: Actor, context: ActorContext, self: ActorRef): Unit =
     if (actorInstance ne null) {
-      if (!lookupAndSetField(actorInstance.getClass, actorInstance, "context", context)
-        || !lookupAndSetField(actorInstance.getClass, actorInstance, "self", self))
+      if (!Reflect.lookupAndSetField(actorInstance.getClass, actorInstance, "context", context)
+        || !Reflect.lookupAndSetField(actorInstance.getClass, actorInstance, "self", self))
         throw new IllegalActorStateException(actorInstance.getClass + " is not an Actor since it have not mixed in the 'Actor' trait")
     }
 
@@ -658,4 +650,3 @@ private[akka] class ActorCell(
 
   protected final def clazz(o: AnyRef): Class[_] = if (o eq null) this.getClass else o.getClass
 }
-

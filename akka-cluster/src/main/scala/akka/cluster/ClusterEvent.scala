@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -56,10 +56,10 @@ object ClusterEvent {
    * Current snapshot state of the cluster. Sent to new subscriber.
    */
   final case class CurrentClusterState(
-    members: immutable.SortedSet[Member] = immutable.SortedSet.empty,
-    unreachable: Set[Member] = Set.empty,
-    seenBy: Set[Address] = Set.empty,
-    leader: Option[Address] = None,
+    members:       immutable.SortedSet[Member]  = immutable.SortedSet.empty,
+    unreachable:   Set[Member]                  = Set.empty,
+    seenBy:        Set[Address]                 = Set.empty,
+    leader:        Option[Address]              = None,
     roleLeaderMap: Map[String, Option[Address]] = Map.empty) {
 
     /**
@@ -122,10 +122,34 @@ object ClusterEvent {
   }
 
   /**
+   * Member status changed to Joining.
+   */
+  final case class MemberJoined(member: Member) extends MemberEvent {
+    if (member.status != Joining) throw new IllegalArgumentException("Expected Joining status, got: " + member)
+  }
+
+  /**
+   * Member status changed to WeaklyUp.
+   * A joining member can be moved to `WeaklyUp` if convergence
+   * cannot be reached, i.e. there are unreachable nodes.
+   * It will be moved to `Up` when convergence is reached.
+   */
+  final case class MemberWeaklyUp(member: Member) extends MemberEvent {
+    if (member.status != WeaklyUp) throw new IllegalArgumentException("Expected WeaklyUp status, got: " + member)
+  }
+
+  /**
    * Member status changed to Up.
    */
   final case class MemberUp(member: Member) extends MemberEvent {
     if (member.status != Up) throw new IllegalArgumentException("Expected Up status, got: " + member)
+  }
+
+  /**
+   * Member status changed to Leaving.
+   */
+  final case class MemberLeft(member: Member) extends MemberEvent {
+    if (member.status != Leaving) throw new IllegalArgumentException("Expected Leaving status, got: " + member)
   }
 
   /**
@@ -262,18 +286,22 @@ object ClusterEvent {
   private[cluster] def diffMemberEvents(oldGossip: Gossip, newGossip: Gossip): immutable.Seq[MemberEvent] =
     if (newGossip eq oldGossip) Nil
     else {
-      val newMembers = newGossip.members -- oldGossip.members
+      val newMembers = newGossip.members diff oldGossip.members
       val membersGroupedByAddress = List(newGossip.members, oldGossip.members).flatten.groupBy(_.uniqueAddress)
       val changedMembers = membersGroupedByAddress collect {
-        case (_, newMember :: oldMember :: Nil) if newMember.status != oldMember.status ⇒ newMember
+        case (_, newMember :: oldMember :: Nil) if newMember.status != oldMember.status || newMember.upNumber != oldMember.upNumber ⇒
+          newMember
       }
       val memberEvents = (newMembers ++ changedMembers) collect {
-        case m if m.status == Up      ⇒ MemberUp(m)
-        case m if m.status == Exiting ⇒ MemberExited(m)
+        case m if m.status == Joining  ⇒ MemberJoined(m)
+        case m if m.status == WeaklyUp ⇒ MemberWeaklyUp(m)
+        case m if m.status == Up       ⇒ MemberUp(m)
+        case m if m.status == Leaving  ⇒ MemberLeft(m)
+        case m if m.status == Exiting  ⇒ MemberExited(m)
         // no events for other transitions
       }
 
-      val removedMembers = oldGossip.members -- newGossip.members
+      val removedMembers = oldGossip.members diff newGossip.members
       val removedEvents = removedMembers.map(m ⇒ MemberRemoved(m.copy(status = Removed), m.status))
 
       (new VectorBuilder[MemberEvent]() ++= memberEvents ++= removedEvents).result()
@@ -293,7 +321,7 @@ object ClusterEvent {
    */
   private[cluster] def diffRolesLeader(oldGossip: Gossip, newGossip: Gossip, selfUniqueAddress: UniqueAddress): Set[RoleLeaderChanged] = {
     for {
-      role ← (oldGossip.allRoles ++ newGossip.allRoles)
+      role ← (oldGossip.allRoles union newGossip.allRoles)
       newLeader = newGossip.roleLeader(role, selfUniqueAddress)
       if newLeader != oldGossip.roleLeader(role, selfUniqueAddress)
     } yield RoleLeaderChanged(role, newLeader.map(_.address))
@@ -367,7 +395,7 @@ private[cluster] final class ClusterDomainEventPublisher extends Actor with Acto
       unreachable = unreachable,
       seenBy = latestGossip.seenBy.map(_.address),
       leader = latestGossip.leader(selfUniqueAddress).map(_.address),
-      roleLeaderMap = latestGossip.allRoles.map(r ⇒ r -> latestGossip.roleLeader(r, selfUniqueAddress)
+      roleLeaderMap = latestGossip.allRoles.map(r ⇒ r → latestGossip.roleLeader(r, selfUniqueAddress)
         .map(_.address))(collection.breakOut))
     receiver ! state
   }

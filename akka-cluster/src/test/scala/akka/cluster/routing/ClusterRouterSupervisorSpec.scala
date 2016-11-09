@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.routing
 
@@ -21,9 +21,8 @@ object ClusterRouterSupervisorSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ClusterRouterSupervisorSpec extends AkkaSpec("""
-  akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+  akka.actor.provider = "cluster"
   akka.remote.netty.tcp.port = 0
 """) {
 

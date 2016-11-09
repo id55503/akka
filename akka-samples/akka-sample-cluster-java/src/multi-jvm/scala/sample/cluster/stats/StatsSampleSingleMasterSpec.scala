@@ -32,7 +32,7 @@ object StatsSampleSingleMasterSpecConfig extends MultiNodeConfig {
   def nodeList = Seq(first, second, third)
 
   // Extract individual sigar library for every node.
-  nodeList foreach { role ⇒
+  nodeList foreach { role =>
     nodeConfig(role) {
       ConfigFactory.parseString(s"""
       # Disable legacy metrics in akka-cluster.
@@ -49,14 +49,13 @@ object StatsSampleSingleMasterSpecConfig extends MultiNodeConfig {
   // note that no fixed host names and ports are used
   commonConfig(ConfigFactory.parseString("""
     akka.loglevel = INFO
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = "cluster"
     akka.remote.log-remote-lifecycle-events = off
     akka.cluster.roles = [compute]
     #//#router-deploy-config
     akka.actor.deployment {
-      /singleton/statsService/workerRouter {
+      /statsService/singleton/workerRouter {
           router = consistent-hashing-pool
-          nr-of-instances = 100
           cluster {
             enabled = on
             max-nr-of-instances-per-node = 3
@@ -105,10 +104,10 @@ abstract class StatsSampleSingleMasterSpec extends MultiNodeSpec(StatsSampleSing
       system.actorOf(ClusterSingletonManager.props(
         Props[StatsService],
         terminationMessage = PoisonPill,
-        settings = ClusterSingletonManagerSettings(system).withSingletonName("statsService")),
-        name = "singleton")
+        settings = ClusterSingletonManagerSettings(system)),
+        name = "statsService")
 
-      system.actorOf(ClusterSingletonProxy.props("/user/singleton/statsService",
+      system.actorOf(ClusterSingletonProxy.props("/user/statsService",
         ClusterSingletonProxySettings(system).withRole("compute")), "statsServiceProxy")
 
       testConductor.enter("all-up")

@@ -1,17 +1,17 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.io
 
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.DatagramChannel
 import java.nio.channels.SelectionKey._
+
 import scala.annotation.tailrec
 import scala.util.control.NonFatal
-import akka.actor.{ ActorLogging, Actor, ActorRef }
+import akka.actor.{ Actor, ActorLogging, ActorRef }
 import akka.dispatch.{ RequiresMessageQueue, UnboundedMessageQueueSemantics }
-import akka.util.ByteString
+import akka.util.{ ByteString, Helpers }
 import akka.io.Inet.DatagramChannelCreator
 import akka.io.SelectionHandler._
 import akka.io.Udp._
@@ -19,10 +19,11 @@ import akka.io.Udp._
 /**
  * INTERNAL API
  */
-private[io] class UdpListener(val udp: UdpExt,
-                              channelRegistry: ChannelRegistry,
-                              bindCommander: ActorRef,
-                              bind: Bind)
+private[io] class UdpListener(
+  val udp:         UdpExt,
+  channelRegistry: ChannelRegistry,
+  bindCommander:   ActorRef,
+  bind:            Bind)
   extends Actor with ActorLogging with WithUdpSend with RequiresMessageQueue[UnboundedMessageQueueSemantics] {
 
   import udp.bufferPool
@@ -75,6 +76,7 @@ private[io] class UdpListener(val udp: UdpExt,
       log.debug("Unbinding endpoint [{}]", bind.localAddress)
       try {
         channel.close()
+        if (Helpers.isWindows) registration.enableInterest(OP_READ)
         sender() ! Unbound
         log.debug("Unbound endpoint [{}], stopping listener", bind.localAddress)
       } finally context.stop(self)

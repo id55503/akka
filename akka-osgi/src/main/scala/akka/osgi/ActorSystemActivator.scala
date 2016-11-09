@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.osgi
 
@@ -63,7 +63,7 @@ abstract class ActorSystemActivator extends BundleActivator {
     val filter = s"(objectclass=${classOf[LogService].getName})"
     context.addServiceListener(logServiceListner, filter)
 
-    //Small trick to create an event if the service is registred before this start listing for
+    //Small trick to create an event if the service is registered before this start listing for
     Option(context.getServiceReference(classOf[LogService].getName)).foreach(x ⇒ {
       logServiceListner.serviceChanged(new ServiceEvent(ServiceEvent.REGISTERED, x))
     })

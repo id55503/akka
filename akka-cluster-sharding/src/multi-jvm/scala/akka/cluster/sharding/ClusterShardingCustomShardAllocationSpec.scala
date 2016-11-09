@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2014 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.sharding
 
@@ -26,37 +26,18 @@ import scala.concurrent.Future
 import akka.util.Timeout
 import akka.pattern.ask
 
-object ClusterShardingCustomShardAllocationSpec extends MultiNodeConfig {
-  val first = role("first")
-  val second = role("second")
-
-  commonConfig(ConfigFactory.parseString("""
-    akka.loglevel = INFO
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
-    akka.remote.log-remote-lifecycle-events = off
-    akka.persistence.journal.plugin = "akka.persistence.journal.leveldb-shared"
-    akka.persistence.journal.leveldb-shared {
-      timeout = 5s
-      store {
-        native = off
-        dir = "target/journal-ClusterShardingCustomShardAllocationSpec"
-      }
-    }
-    akka.persistence.snapshot-store.plugin = "akka.persistence.snapshot-store.local"
-    akka.persistence.snapshot-store.local.dir = "target/snapshots-ClusterShardingCustomShardAllocationSpec"
-    """))
-
+object ClusterShardingCustomShardAllocationSpec {
   class Entity extends Actor {
     def receive = {
       case id: Int ⇒ sender() ! id
     }
   }
 
-  val idExtractor: ShardRegion.IdExtractor = {
+  val extractEntityId: ShardRegion.ExtractEntityId = {
     case id: Int ⇒ (id.toString, id)
   }
 
-  val shardResolver: ShardRegion.ShardResolver = msg ⇒ msg match {
+  val extractShardId: ShardRegion.ExtractShardId = msg ⇒ msg match {
     case id: Int ⇒ id.toString
   }
 
@@ -98,11 +79,43 @@ object ClusterShardingCustomShardAllocationSpec extends MultiNodeConfig {
 
 }
 
-class ClusterShardingCustomShardAllocationMultiJvmNode1 extends ClusterShardingCustomShardAllocationSpec
-class ClusterShardingCustomShardAllocationMultiJvmNode2 extends ClusterShardingCustomShardAllocationSpec
+abstract class ClusterShardingCustomShardAllocationSpecConfig(val mode: String) extends MultiNodeConfig {
+  val first = role("first")
+  val second = role("second")
 
-class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShardingCustomShardAllocationSpec) with STMultiNodeSpec with ImplicitSender {
+  commonConfig(ConfigFactory.parseString(s"""
+    akka.loglevel = INFO
+    akka.actor.provider = "cluster"
+    akka.remote.log-remote-lifecycle-events = off
+    akka.persistence.journal.plugin = "akka.persistence.journal.leveldb-shared"
+    akka.persistence.journal.leveldb-shared {
+      timeout = 5s
+      store {
+        native = off
+        dir = "target/journal-ClusterShardingCustomShardAllocationSpec"
+      }
+    }
+    akka.persistence.snapshot-store.plugin = "akka.persistence.snapshot-store.local"
+    akka.persistence.snapshot-store.local.dir = "target/snapshots-ClusterShardingCustomShardAllocationSpec"
+    akka.cluster.sharding.state-store-mode = "$mode"
+    """))
+}
+
+object PersistentClusterShardingCustomShardAllocationSpecConfig extends ClusterShardingCustomShardAllocationSpecConfig("persistence")
+object DDataClusterShardingCustomShardAllocationSpecConfig extends ClusterShardingCustomShardAllocationSpecConfig("ddata")
+
+class PersistentClusterShardingCustomShardAllocationSpec extends ClusterShardingCustomShardAllocationSpec(PersistentClusterShardingCustomShardAllocationSpecConfig)
+class DDataClusterShardingCustomShardAllocationSpec extends ClusterShardingCustomShardAllocationSpec(DDataClusterShardingCustomShardAllocationSpecConfig)
+
+class PersistentClusterShardingCustomShardAllocationMultiJvmNode1 extends PersistentClusterShardingCustomShardAllocationSpec
+class PersistentClusterShardingCustomShardAllocationMultiJvmNode2 extends PersistentClusterShardingCustomShardAllocationSpec
+
+class DDataClusterShardingCustomShardAllocationMultiJvmNode1 extends DDataClusterShardingCustomShardAllocationSpec
+class DDataClusterShardingCustomShardAllocationMultiJvmNode2 extends DDataClusterShardingCustomShardAllocationSpec
+
+abstract class ClusterShardingCustomShardAllocationSpec(config: ClusterShardingCustomShardAllocationSpecConfig) extends MultiNodeSpec(config) with STMultiNodeSpec with ImplicitSender {
   import ClusterShardingCustomShardAllocationSpec._
+  import config._
 
   override def initialParticipants = roles.size
 
@@ -134,19 +147,19 @@ class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShar
   def startSharding(): Unit = {
     ClusterSharding(system).start(
       typeName = "Entity",
-      entryProps = Some(Props[Entity]),
-      roleOverride = None,
-      rememberEntries = false,
-      idExtractor = idExtractor,
-      shardResolver = shardResolver,
-      allocationStrategy = TestAllocationStrategy(allocator))
+      entityProps = Props[Entity],
+      settings = ClusterShardingSettings(system),
+      extractEntityId = extractEntityId,
+      extractShardId = extractShardId,
+      allocationStrategy = TestAllocationStrategy(allocator),
+      handOffStopMessage = PoisonPill)
   }
 
   lazy val region = ClusterSharding(system).shardRegion("Entity")
 
   lazy val allocator = system.actorOf(Props[Allocator], "allocator")
 
-  "Cluster sharding with custom allocation strategy" must {
+  s"Cluster sharding ($mode) with custom allocation strategy" must {
 
     "setup shared journal" in {
       // start the Persistence extension
@@ -158,7 +171,7 @@ class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShar
 
       runOn(first, second) {
         system.actorSelection(node(first) / "user" / "store") ! Identify(None)
-        val sharedStore = expectMsgType[ActorIdentity].ref.get
+        val sharedStore = expectMsgType[ActorIdentity](10.seconds).ref.get
         SharedLeveldbJournal.setStore(sharedStore, system)
       }
 
@@ -185,12 +198,12 @@ class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShar
         lastSender.path should be(region.path / "2" / "2")
       }
       runOn(second) {
-        lastSender.path should be(node(first) / "user" / "sharding" / "Entity" / "2" / "2")
+        lastSender.path should be(node(first) / "system" / "sharding" / "Entity" / "2" / "2")
       }
       enterBarrier("second-started")
 
       runOn(first) {
-        system.actorSelection(node(second) / "user" / "sharding" / "Entity") ! Identify(None)
+        system.actorSelection(node(second) / "system" / "sharding" / "Entity") ! Identify(None)
         val secondRegion = expectMsgType[ActorIdentity].ref.get
         allocator ! UseRegion(secondRegion)
         expectMsg(UseRegionAck)
@@ -203,7 +216,7 @@ class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShar
         lastSender.path should be(region.path / "3" / "3")
       }
       runOn(first) {
-        lastSender.path should be(node(second) / "user" / "sharding" / "Entity" / "3" / "3")
+        lastSender.path should be(node(second) / "system" / "sharding" / "Entity" / "3" / "3")
       }
 
       enterBarrier("after-2")
@@ -218,7 +231,7 @@ class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShar
           val p = TestProbe()
           region.tell(2, p.ref)
           p.expectMsg(2.second, 2)
-          p.lastSender.path should be(node(second) / "user" / "sharding" / "Entity" / "2" / "2")
+          p.lastSender.path should be(node(second) / "system" / "sharding" / "Entity" / "2" / "2")
         }
 
         region ! 1
@@ -231,4 +244,3 @@ class ClusterShardingCustomShardAllocationSpec extends MultiNodeSpec(ClusterShar
 
   }
 }
-

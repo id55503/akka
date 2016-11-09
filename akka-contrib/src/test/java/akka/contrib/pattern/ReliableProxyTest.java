@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.contrib.pattern;
@@ -12,6 +12,7 @@ import akka.testkit.AkkaJUnitActorSystemResource;
 import org.junit.ClassRule;
 import org.junit.Test;
 
+import org.scalatest.junit.JUnitSuite;
 import scala.concurrent.duration.Duration;
 import akka.testkit.TestProbe;
 
@@ -21,7 +22,7 @@ import akka.contrib.pattern.ReliableProxy;
 
 //#import
 
-public class ReliableProxyTest {
+public class ReliableProxyTest extends JUnitSuite {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource =

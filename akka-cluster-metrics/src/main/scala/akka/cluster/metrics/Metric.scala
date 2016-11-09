@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.metrics
 
@@ -207,12 +207,12 @@ object StandardMetrics {
    */
   @SerialVersionUID(1L)
   final case class Cpu(
-    address: Address,
-    timestamp: Long,
+    address:           Address,
+    timestamp:         Long,
     systemLoadAverage: Option[Double],
-    cpuCombined: Option[Double],
-    cpuStolen: Option[Double],
-    processors: Int) {
+    cpuCombined:       Option[Double],
+    cpuStolen:         Option[Double],
+    processors:        Int) {
 
     cpuCombined match {
       case Some(x) ⇒ require(0.0 <= x && x <= 1.0, s"cpuCombined must be between [0.0 - 1.0], was [$x]")
@@ -282,7 +282,7 @@ final case class NodeMetrics(address: Address, timestamp: Long, metrics: Set[Met
     if (timestamp >= that.timestamp) this // that is older
     else {
       // equality is based on the name of the Metric and Set doesn't replace existing element
-      copy(metrics = that.metrics ++ metrics, timestamp = that.timestamp)
+      copy(metrics = that.metrics union metrics, timestamp = that.timestamp)
     }
   }
 
@@ -303,7 +303,7 @@ final case class NodeMetrics(address: Address, timestamp: Long, metrics: Set[Met
     }
     // Append metrics missing from either latest or current.
     // Equality is based on the [[Metric.name]] and [[Set]] doesn't replace existing elements.
-    val merged = updated ++ latestNode.metrics ++ currentNode.metrics
+    val merged = updated union latestNode.metrics union currentNode.metrics
     copy(metrics = merged, timestamp = latestNode.timestamp)
   }
 

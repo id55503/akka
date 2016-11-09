@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.routing
@@ -39,7 +39,8 @@ class ConsistentHash[T: ClassTag] private (nodes: immutable.SortedMap[Int, T], v
    */
   def :+(node: T): ConsistentHash[T] = {
     val nodeHash = hashFor(node.toString)
-    new ConsistentHash(nodes ++ ((1 to virtualNodesFactor) map { r ⇒ (concatenateNodeHash(nodeHash, r) -> node) }),
+    new ConsistentHash(
+      nodes ++ ((1 to virtualNodesFactor) map { r ⇒ (concatenateNodeHash(nodeHash, r) → node) }),
       virtualNodesFactor)
   }
 
@@ -57,7 +58,8 @@ class ConsistentHash[T: ClassTag] private (nodes: immutable.SortedMap[Int, T], v
    */
   def :-(node: T): ConsistentHash[T] = {
     val nodeHash = hashFor(node.toString)
-    new ConsistentHash(nodes -- ((1 to virtualNodesFactor) map { r ⇒ concatenateNodeHash(nodeHash, r) }),
+    new ConsistentHash(
+      nodes -- ((1 to virtualNodesFactor) map { r ⇒ concatenateNodeHash(nodeHash, r) }),
       virtualNodesFactor)
   }
 
@@ -110,12 +112,13 @@ class ConsistentHash[T: ClassTag] private (nodes: immutable.SortedMap[Int, T], v
 
 object ConsistentHash {
   def apply[T: ClassTag](nodes: Iterable[T], virtualNodesFactor: Int): ConsistentHash[T] = {
-    new ConsistentHash(immutable.SortedMap.empty[Int, T] ++
-      (for {
-        node ← nodes
-        nodeHash = hashFor(node.toString)
-        vnode ← 1 to virtualNodesFactor
-      } yield (concatenateNodeHash(nodeHash, vnode) -> node)),
+    new ConsistentHash(
+      immutable.SortedMap.empty[Int, T] ++
+        (for {
+          node ← nodes
+          nodeHash = hashFor(node.toString)
+          vnode ← 1 to virtualNodesFactor
+        } yield (concatenateNodeHash(nodeHash, vnode) → node)),
       virtualNodesFactor)
   }
 

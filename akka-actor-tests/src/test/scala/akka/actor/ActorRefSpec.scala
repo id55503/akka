@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -109,7 +109,6 @@ object ActorRefSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ActorRefSpec extends AkkaSpec with DefaultTimeout {
   import akka.actor.ActorRefSpec._
 
@@ -251,6 +250,17 @@ class ActorRefSpec extends AkkaSpec with DefaultTimeout {
         }).getMessage should ===("Ur state be b0rked")
 
         contextStackMustBeEmpty()
+      }
+    }
+
+    "insert its path in a ActorInitializationException" in {
+      EventFilter[ActorInitializationException](occurrences = 1, pattern = "/user/failingActor:") intercept {
+        intercept[java.lang.IllegalStateException] {
+          wrap(result ⇒
+            system.actorOf(Props(promiseIntercept({
+              throw new IllegalStateException
+            })(result)), "failingActor"))
+        }
       }
     }
 

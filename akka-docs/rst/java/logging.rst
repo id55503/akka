@@ -123,6 +123,19 @@ If you want very detailed logging of all lifecycle changes of Actors (restarts, 
       }
     }
 
+If you want unhandled messages logged at DEBUG:
+
+.. code-block:: ruby
+
+    akka {
+      actor {
+        debug {
+          # enable DEBUG logging of unhandled messages
+          unhandled = on
+        }
+      }
+    }
+
 If you want very detailed logging of all events, transitions and timers of FSM Actors that extend LoggingFSM:
 
 .. code-block:: ruby
@@ -218,7 +231,12 @@ Loggers
 =======
 
 Logging is performed asynchronously through an event bus. Log events are processed by an event handler actor
-and it will receive the log events in the same order as they were emitted. 
+and it will receive the log events in the same order as they were emitted.
+
+.. note::
+  The event handler actor does not have a bounded inbox and is run on the default dispatcher. This means
+  that logging extreme amounts of data may affect your application badly. It can be somewhat mitigated by
+  making sure to use an async logging backend though. (See :ref:`slf4j-directly-java`)
 
 You can configure which event handlers are created at system start-up and listen to logging events. That is done using the 
 ``loggers`` element in the :ref:`configuration`.
@@ -278,6 +296,11 @@ More fine grained log levels can be defined in the configuration of the SLF4J ba
 the ``logging-filter`` configuration property. It will filter the log events using the backend
 configuration (e.g. logback.xml) before they are published to the event bus.
 
+.. warning::
+  If you set the ``loglevel`` to a higher level than "DEBUG", any DEBUG events will be filtered
+  out already at the source and will never reach the logging backend, regardless of how the backend
+  is configured.
+
 .. code-block:: ruby
 
   akka {
@@ -304,6 +327,18 @@ the first case and ``LoggerFactory.getLogger(String s)`` in the second).
 .. code-block:: scala
 
   final LoggingAdapter log = Logging.getLogger(system.eventStream(), "my.string");
+
+.. _slf4j-directly-java:
+
+Using the SLF4J API directly
+----------------------------
+If you use the SLF4J API directly in your application, remember that the logging operations will block
+while the underlying infrastructure writes the log statements.
+
+This can be avoided by configuring the logging implementation to use
+a non-blocking appender. Logback provides `AsyncAppender <http://logback.qos.ch/manual/appenders.html#AsyncAppender>`_
+that does this. It also contains a feature which will drop ``INFO`` and ``DEBUG`` messages if the logging
+load is high.
 
 Logging Thread, Akka Source and Actor System in MDC
 ---------------------------------------------------
@@ -398,4 +433,25 @@ Now, the values will be available in the MDC, so you can use them in the layout 
       </pattern>
     </encoder>
   </appender>
+
+
+Using Markers
+-------------
+
+Some logging libraries allow, in addition to MDC data, attaching so called "markers" to log statements.
+These are used to filter out rare and special events, for example you might want to mark logs that detect
+some malicious activity and mark them with a ``SECURITY`` tag, and in your appender configuration make these
+trigger emails and other notifications immediately.
+
+Markers are available through the LoggingAdapters, when obtained via ``Logging.withMarker``.
+The first argument passed into all log calls then should be a ``akka.event.LogMarker``. 
+
+The slf4j bridge provided by akka in ``akka-slf4j`` will automatically pick up this marker value and make it available to SLF4J.
+For example you could use it like this::
+
+  <pattern>%date{ISO8601} [%marker][%level] [%msg]%n</pattern>
+
+A more advanced (including most Akka added information) example pattern would be::
+
+  <pattern>%date{ISO8601} level=[%level] marker=[%marker] logger=[%logger] akkaSource=[%X{akkaSource}] sourceActorSystem=[%X{sourceActorSystem}] sourceThread=[%X{sourceThread}] mdc=[ticket-#%X{ticketNumber}: %X{ticketDesc}] - msg=[%msg]%n----%n</pattern>
 

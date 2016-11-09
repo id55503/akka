@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -96,7 +96,7 @@ abstract class ClusterAccrualFailureDetectorSpec
       enterBarrier("third-shutdown")
 
       runOn(first, second) {
-        // remaning nodes should detect failure...
+        // remaining nodes should detect failure...
         awaitCond(!cluster.failureDetector.isAvailable(third), 15.seconds)
         // other connections still ok
         cluster.failureDetector.isAvailable(first) should ===(true)

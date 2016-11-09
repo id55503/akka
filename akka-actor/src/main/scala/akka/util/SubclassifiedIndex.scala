@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.util
 
@@ -127,7 +127,7 @@ private[akka] class SubclassifiedIndex[K, V] private (protected var values: Set[
     if (!found) {
       val v = values + value
       val n = new Nonroot(root, key, v)
-      integrate(n) ++ n.innerAddValue(key, value) :+ (key -> v)
+      integrate(n) ++ n.innerAddValue(key, value) :+ (key → v)
     } else ch
   }
 

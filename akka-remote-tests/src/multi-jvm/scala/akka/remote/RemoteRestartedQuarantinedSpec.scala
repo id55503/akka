@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2014 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -45,8 +45,8 @@ object RemoteRestartedQuarantinedSpec extends MultiNodeConfig {
 
   class Subject extends Actor {
     def receive = {
-      case "shutdown" ⇒ context.system.shutdown()
-      case "identify" ⇒ sender() ! (AddressUidExtension(context.system).addressUid, self)
+      case "shutdown" ⇒ context.system.terminate()
+      case "identify" ⇒ sender() ! (AddressUidExtension(context.system).addressUid → self)
     }
   }
 
@@ -56,8 +56,7 @@ class RemoteRestartedQuarantinedSpecMultiJvmNode1 extends RemoteRestartedQuarant
 class RemoteRestartedQuarantinedSpecMultiJvmNode2 extends RemoteRestartedQuarantinedSpec
 
 abstract class RemoteRestartedQuarantinedSpec
-  extends MultiNodeSpec(RemoteRestartedQuarantinedSpec)
-  with STMultiNodeSpec with ImplicitSender {
+  extends RemotingMultiNodeSpec(RemoteRestartedQuarantinedSpec) {
 
   import RemoteRestartedQuarantinedSpec._
 
@@ -80,7 +79,7 @@ abstract class RemoteRestartedQuarantinedSpec
 
         val (uid, ref) = identifyWithUid(second, "subject")
 
-        RARP(system).provider.transport.quarantine(node(second).address, Some(uid))
+        RARP(system).provider.transport.quarantine(node(second).address, Some(uid), "test")
 
         enterBarrier("quarantined")
         enterBarrier("still-quarantined")
@@ -100,6 +99,7 @@ abstract class RemoteRestartedQuarantinedSpec
       runOn(second) {
         val addr = system.asInstanceOf[ExtendedActorSystem].provider.getDefaultAddress
         val firstAddress = node(first).address
+        system.eventStream.subscribe(testActor, classOf[ThisActorSystemQuarantinedEvent])
 
         val (_, ref) = identifyWithUid(first, "subject")
 
@@ -114,9 +114,13 @@ abstract class RemoteRestartedQuarantinedSpec
           }
         }
 
+        expectMsgPF(10 seconds) {
+          case ThisActorSystemQuarantinedEvent(local, remote) ⇒
+        }
+
         enterBarrier("still-quarantined")
 
-        system.awaitTermination(10.seconds)
+        Await.result(system.whenTerminated, 10.seconds)
 
         val freshSystem = ActorSystem(system.name, ConfigFactory.parseString(s"""
                     akka.remote.retry-gate-closed-for = 0.5 s

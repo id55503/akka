@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.singleton
@@ -35,7 +35,7 @@ object ClusterSingletonManagerStartupSpec extends MultiNodeConfig {
 
   commonConfig(ConfigFactory.parseString("""
     akka.loglevel = INFO
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = "cluster"
     akka.remote.log-remote-lifecycle-events = off
     akka.cluster.auto-down-unreachable-after = 0s
     """))
@@ -69,17 +69,19 @@ class ClusterSingletonManagerStartupSpec extends MultiNodeSpec(ClusterSingletonM
   }
 
   def createSingleton(): ActorRef = {
-    system.actorOf(ClusterSingletonManager.props(
-      singletonProps = Props(classOf[Echo], testActor),
-      terminationMessage = PoisonPill,
-      settings = ClusterSingletonManagerSettings(system).withSingletonName("echo")),
-      name = "singleton")
+    system.actorOf(
+      ClusterSingletonManager.props(
+        singletonProps = Props(classOf[Echo], testActor),
+        terminationMessage = PoisonPill,
+        settings = ClusterSingletonManagerSettings(system)),
+      name = "echo")
   }
 
   lazy val echoProxy: ActorRef = {
-    system.actorOf(ClusterSingletonProxy.props(
-      singletonPath = "/user/singleton/echo",
-      settings = ClusterSingletonProxySettings(system)),
+    system.actorOf(
+      ClusterSingletonProxy.props(
+        singletonManagerPath = "/user/echo",
+        settings = ClusterSingletonProxySettings(system)),
       name = "echoProxy")
   }
 

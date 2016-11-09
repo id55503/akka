@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.transport
 
@@ -145,13 +145,13 @@ object ThrottlerTransportAdapter {
   }
 
   /**
-   * Management Command to force dissocation of an address.
+   * Management Command to force disassociation of an address.
    */
   @SerialVersionUID(1L)
   final case class ForceDisassociate(address: Address)
 
   /**
-   * Management Command to force dissocation of an address with an explicit error.
+   * Management Command to force disassociation of an address with an explicit error.
    */
   @SerialVersionUID(1L)
   final case class ForceDisassociateExplicitly(address: Address, reason: DisassociateInfo)
@@ -232,7 +232,7 @@ private[transport] class ThrottlerManager(wrappedTransport: Transport) extends A
       val inMode = getInboundMode(naked)
       wrappedHandle.outboundThrottleMode.set(getOutboundMode(naked))
       wrappedHandle.readHandlerPromise.future map { ListenerAndMode(_, inMode) } pipeTo wrappedHandle.throttlerActor
-      handleTable ::= naked -> wrappedHandle
+      handleTable ::= naked → wrappedHandle
       statusPromise.success(wrappedHandle)
     case SetThrottle(address, direction, mode) ⇒
       val naked = nakedAddress(address)
@@ -259,7 +259,7 @@ private[transport] class ThrottlerManager(wrappedTransport: Transport) extends A
 
     case Checkin(origin, handle) ⇒
       val naked: Address = nakedAddress(origin)
-      handleTable ::= naked -> handle
+      handleTable ::= naked → handle
       setMode(naked, handle)
 
   }
@@ -360,10 +360,10 @@ private[transport] object ThrottledAssociation {
  * INTERNAL API
  */
 private[transport] class ThrottledAssociation(
-  val manager: ActorRef,
+  val manager:            ActorRef,
   val associationHandler: AssociationEventListener,
-  val originalHandle: AssociationHandle,
-  val inbound: Boolean)
+  val originalHandle:     AssociationHandle,
+  val inbound:            Boolean)
   extends Actor with LoggingFSM[ThrottledAssociation.ThrottlerState, ThrottledAssociation.ThrottlerData]
   with RequiresMessageQueue[UnboundedMessageQueueSemantics] {
   import ThrottledAssociation._

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -7,12 +7,16 @@ package akka.actor
 import scala.collection.immutable
 import akka.dispatch._
 import akka.dispatch.sysmsg._
-import java.lang.{ UnsupportedOperationException, IllegalStateException }
-import akka.serialization.{ Serialization, JavaSerializer }
-import akka.event.EventStream
+import java.lang.{ IllegalStateException, UnsupportedOperationException }
+
+import akka.serialization.{ JavaSerializer, Serialization }
+import akka.event.{ EventStream, Logging, LoggingAdapter, MarkerLoggingAdapter }
+
 import scala.annotation.tailrec
 import java.util.concurrent.ConcurrentHashMap
-import akka.event.LoggingAdapter
+import java.util.concurrent.atomic.AtomicReference
+
+import scala.util.control.NonFatal
 
 object ActorRef {
 
@@ -77,7 +81,7 @@ object ActorRef {
  *
  *     } else if (o instanceof Request3) {
  *       Msg msg = ((Request3) o).getMsg();
- *       pipe(ask(other, msg, 5000)).to(getSender());
+ *       pipe(ask(other, msg, 5000), context().dispatcher()).to(getSender());
  *       // the ask call will get a future from other's reply
  *       // when the future is complete, send its value to the original sender
  *
@@ -300,11 +304,11 @@ private[akka] case object Nobody extends MinimalActorRef {
  *  INTERNAL API
  */
 private[akka] class LocalActorRef private[akka] (
-  _system: ActorSystemImpl,
-  _props: Props,
-  _dispatcher: MessageDispatcher,
-  _mailboxType: MailboxType,
-  _supervisor: InternalActorRef,
+  _system:           ActorSystemImpl,
+  _props:            Props,
+  _dispatcher:       MessageDispatcher,
+  _mailboxType:      MailboxType,
+  _supervisor:       InternalActorRef,
   override val path: ActorPath)
   extends ActorRefWithCell with LocalRef {
 
@@ -465,7 +469,7 @@ private[akka] trait MinimalActorRef extends InternalActorRef with LocalRef {
   protected def writeReplace(): AnyRef = SerializedActorRef(this)
 }
 
-/** Subscribe to this class to be notified about all DeadLetters (also the supressed ones). */
+/** Subscribe to this class to be notified about all DeadLetters (also the suppressed ones). */
 sealed trait AllDeadLetters {
   def message: Any
   def sender: ActorRef
@@ -516,9 +520,10 @@ private[akka] object DeadLetterActorRef {
  *
  * INTERNAL API
  */
-private[akka] class EmptyLocalActorRef(override val provider: ActorRefProvider,
-                                       override val path: ActorPath,
-                                       val eventStream: EventStream) extends MinimalActorRef {
+private[akka] class EmptyLocalActorRef(
+  override val provider: ActorRefProvider,
+  override val path:     ActorPath,
+  val eventStream:       EventStream) extends MinimalActorRef {
 
   @deprecated("Use context.watch(actor) and receive Terminated(actor)", "2.2")
   override private[akka] def isTerminated = true
@@ -568,9 +573,10 @@ private[akka] class EmptyLocalActorRef(override val provider: ActorRefProvider,
  *
  * INTERNAL API
  */
-private[akka] class DeadLetterActorRef(_provider: ActorRefProvider,
-                                       _path: ActorPath,
-                                       _eventStream: EventStream) extends EmptyLocalActorRef(_provider, _path, _eventStream) {
+private[akka] class DeadLetterActorRef(
+  _provider:    ActorRefProvider,
+  _path:        ActorPath,
+  _eventStream: EventStream) extends EmptyLocalActorRef(_provider, _path, _eventStream) {
 
   override def !(message: Any)(implicit sender: ActorRef = this): Unit = message match {
     case null                ⇒ throw new InvalidMessageException("Message is null")
@@ -599,10 +605,10 @@ private[akka] class DeadLetterActorRef(_provider: ActorRefProvider,
  * INTERNAL API
  */
 private[akka] class VirtualPathContainer(
-  override val provider: ActorRefProvider,
-  override val path: ActorPath,
+  override val provider:  ActorRefProvider,
+  override val path:      ActorPath,
   override val getParent: InternalActorRef,
-  val log: LoggingAdapter) extends MinimalActorRef {
+  val log:                MarkerLoggingAdapter) extends MinimalActorRef {
 
   private val children = new ConcurrentHashMap[String, InternalActorRef]
 
@@ -686,4 +692,141 @@ private[akka] class VirtualPathContainer(
     val iter = children.values.iterator
     while (iter.hasNext) f(iter.next)
   }
+}
+
+/**
+ * INTERNAL API
+ *
+ * This kind of ActorRef passes all received messages to the given function for
+ * performing a non-blocking side-effect. The intended use is to transform the
+ * message before sending to the real target actor. Such references can be created
+ * by calling `ActorCell.addFunctionRef` and must be deregistered when no longer
+ * needed by calling `ActorCell.removeFunctionRef`. FunctionRefs do not count
+ * towards the live children of an actor, they do not receive the Terminate command
+ * and do not prevent the parent from terminating. FunctionRef is properly
+ * registered for remote lookup and ActorSelection.
+ *
+ * When using the watch() feature you must ensure that upon reception of the
+ * Terminated message the watched actorRef is unwatch()ed.
+ */
+private[akka] final class FunctionRef(
+  override val path:     ActorPath,
+  override val provider: ActorRefProvider,
+  val eventStream:       EventStream,
+  f:                     (ActorRef, Any) ⇒ Unit) extends MinimalActorRef {
+
+  override def !(message: Any)(implicit sender: ActorRef = Actor.noSender): Unit = {
+    f(sender, message)
+  }
+
+  override def sendSystemMessage(message: SystemMessage): Unit = {
+    message match {
+      case w: Watch   ⇒ addWatcher(w.watchee, w.watcher)
+      case u: Unwatch ⇒ remWatcher(u.watchee, u.watcher)
+      case DeathWatchNotification(actorRef, _, _) ⇒
+        this.!(Terminated(actorRef)(existenceConfirmed = true, addressTerminated = false))
+      case _ ⇒ //ignore all other messages
+    }
+  }
+
+  private[this] var watching = ActorCell.emptyActorRefSet
+  private[this] val _watchedBy = new AtomicReference[Set[ActorRef]](ActorCell.emptyActorRefSet)
+
+  override def isTerminated = _watchedBy.get() == null
+
+  //noinspection EmptyCheck
+  protected def sendTerminated(): Unit = {
+    val watchedBy = _watchedBy.getAndSet(null)
+    if (watchedBy != null) {
+      if (watchedBy.nonEmpty) {
+        watchedBy foreach sendTerminated(ifLocal = false)
+        watchedBy foreach sendTerminated(ifLocal = true)
+      }
+      if (watching.nonEmpty) {
+        watching foreach unwatchWatched
+        watching = Set.empty
+      }
+    }
+  }
+
+  private def sendTerminated(ifLocal: Boolean)(watcher: ActorRef): Unit =
+    if (watcher.asInstanceOf[ActorRefScope].isLocal == ifLocal)
+      watcher.asInstanceOf[InternalActorRef].sendSystemMessage(DeathWatchNotification(this, existenceConfirmed = true, addressTerminated = false))
+
+  private def unwatchWatched(watched: ActorRef): Unit =
+    watched.asInstanceOf[InternalActorRef].sendSystemMessage(Unwatch(watched, this))
+
+  override def stop(): Unit = sendTerminated()
+
+  @tailrec private def addWatcher(watchee: ActorRef, watcher: ActorRef): Unit =
+    _watchedBy.get() match {
+      case null ⇒
+        sendTerminated(ifLocal = true)(watcher)
+        sendTerminated(ifLocal = false)(watcher)
+
+      case watchedBy ⇒
+        val watcheeSelf = watchee == this
+        val watcherSelf = watcher == this
+
+        if (watcheeSelf && !watcherSelf) {
+          if (!watchedBy.contains(watcher))
+            if (!_watchedBy.compareAndSet(watchedBy, watchedBy + watcher))
+              addWatcher(watchee, watcher) // try again
+        } else if (!watcheeSelf && watcherSelf) {
+          publish(Logging.Warning(path.toString, classOf[FunctionRef], s"externally triggered watch from $watcher to $watchee is illegal on FunctionRef"))
+        } else {
+          publish(Logging.Error(path.toString, classOf[FunctionRef], s"BUG: illegal Watch($watchee,$watcher) for $this"))
+        }
+    }
+
+  @tailrec private def remWatcher(watchee: ActorRef, watcher: ActorRef): Unit = {
+    _watchedBy.get() match {
+      case null ⇒ // do nothing...
+      case watchedBy ⇒
+        val watcheeSelf = watchee == this
+        val watcherSelf = watcher == this
+
+        if (watcheeSelf && !watcherSelf) {
+          if (watchedBy.contains(watcher))
+            if (!_watchedBy.compareAndSet(watchedBy, watchedBy - watcher))
+              remWatcher(watchee, watcher) // try again
+        } else if (!watcheeSelf && watcherSelf) {
+          publish(Logging.Warning(path.toString, classOf[FunctionRef], s"externally triggered unwatch from $watcher to $watchee is illegal on FunctionRef"))
+        } else {
+          publish(Logging.Error(path.toString, classOf[FunctionRef], s"BUG: illegal Unwatch($watchee,$watcher) for $this"))
+        }
+    }
+  }
+
+  private def publish(e: Logging.LogEvent): Unit = try eventStream.publish(e) catch { case NonFatal(_) ⇒ }
+
+  /**
+   * Have this FunctionRef watch the given Actor. This method must not be
+   * called concurrently from different threads, it should only be called by
+   * its parent Actor.
+   *
+   * Upon receiving the Terminated message, unwatch() must be called from a
+   * safe context (i.e. normally from the parent Actor).
+   */
+  def watch(actorRef: ActorRef): Unit = {
+    watching += actorRef
+    actorRef.asInstanceOf[InternalActorRef].sendSystemMessage(Watch(actorRef.asInstanceOf[InternalActorRef], this))
+  }
+
+  /**
+   * Have this FunctionRef unwatch the given Actor. This method must not be
+   * called concurrently from different threads, it should only be called by
+   * its parent Actor.
+   */
+  def unwatch(actorRef: ActorRef): Unit = {
+    watching -= actorRef
+    actorRef.asInstanceOf[InternalActorRef].sendSystemMessage(Unwatch(actorRef.asInstanceOf[InternalActorRef], this))
+  }
+
+  /**
+   * Query whether this FunctionRef is currently watching the given Actor. This
+   * method must not be called concurrently from different threads, it should
+   * only be called by its parent Actor.
+   */
+  def isWatching(actorRef: ActorRef): Boolean = watching.contains(actorRef)
 }

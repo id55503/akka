@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.contrib.throttle;
@@ -8,9 +8,10 @@ import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.concurrent.TimeUnit;
+
+import org.scalatest.junit.JUnitSuite;
 import scala.concurrent.duration.Duration;
 import com.typesafe.config.ConfigFactory;
-import akka.actor.Actor;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Props;
@@ -18,7 +19,7 @@ import akka.actor.UntypedActor;
 import akka.contrib.throttle.TimerBasedThrottler;
 import akka.testkit.AkkaJUnitActorSystemResource;
 
-public class TimerBasedThrottlerTest {
+public class TimerBasedThrottlerTest extends JUnitSuite {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource = new AkkaJUnitActorSystemResource(

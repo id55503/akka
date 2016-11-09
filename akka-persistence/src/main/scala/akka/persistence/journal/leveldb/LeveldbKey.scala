@@ -1,6 +1,6 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
- * Copyright (C) 2012-2013 Eligotech BV.
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
+ * Copyright (C) 2012-2016 Eligotech BV.
  */
 
 package akka.persistence.journal.leveldb
@@ -12,8 +12,8 @@ import java.nio.ByteBuffer
  */
 private[leveldb] final case class Key(
   persistenceId: Int,
-  sequenceNr: Long,
-  mappingId: Int)
+  sequenceNr:    Long,
+  mappingId:     Int)
 
 private[leveldb] object Key {
   def keyToBytes(key: Key): Array[Byte] = {

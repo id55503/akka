@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -14,22 +14,22 @@ import akka.cluster.routing.ClusterRouterGroupSettings
 
 object ClusterDeployerSpec {
   val deployerConf = ConfigFactory.parseString("""
-      akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+      akka.actor.provider = "cluster"
       akka.actor.deployment {
         /user/service1 {
           router = round-robin-pool
-          nr-of-instances = 20
           cluster.enabled = on
           cluster.max-nr-of-instances-per-node = 3
+          cluster.max-total-nr-of-instances = 20
           cluster.allow-local-routees = off
         }
         /user/service2 {
           dispatcher = mydispatcher
           mailbox = mymailbox
           router = round-robin-group
-          nr-of-instances = 20
           routees.paths = ["/user/myservice"]
           cluster.enabled = on
+          cluster.max-total-nr-of-instances = 20
           cluster.allow-local-routees = off
         }
       }
@@ -42,7 +42,6 @@ object ClusterDeployerSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ClusterDeployerSpec extends AkkaSpec(ClusterDeployerSpec.deployerConf) {
 
   "A RemoteDeployer" must {

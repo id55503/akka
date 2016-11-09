@@ -1,12 +1,12 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.persistence
 
 import akka.actor.{ Props, ActorRef }
 import akka.serialization.Serializer
-import akka.testkit.{ ImplicitSender, AkkaSpec }
+import akka.testkit.{ ImplicitSender }
 import java.io._
 
 object SnapshotSerializationSpec {
@@ -64,7 +64,7 @@ object SnapshotSerializationSpec {
 
 }
 
-class SnapshotSerializationSpec extends AkkaSpec(PersistenceSpec.config("leveldb", "SnapshotSerializationSpec", serialization = "off", extraConfig = Some(
+class SnapshotSerializationSpec extends PersistenceSpec(PersistenceSpec.config("leveldb", "SnapshotSerializationSpec", serialization = "off", extraConfig = Some(
   """
     akka.actor {
       serializers {
@@ -74,7 +74,7 @@ class SnapshotSerializationSpec extends AkkaSpec(PersistenceSpec.config("leveldb
         "akka.persistence.SnapshotSerializationSpec$SerializationMarker" = my-snapshot
       }
     }
-  """))) with PersistenceSpec with ImplicitSender {
+  """))) with ImplicitSender {
 
   import SnapshotSerializationSpec._
   import SnapshotSerializationSpec.XXXXXXXXXXXXXXXXXXXX._
@@ -87,7 +87,6 @@ class SnapshotSerializationSpec extends AkkaSpec(PersistenceSpec.config("leveldb
       sPersistentActor ! "blahonga"
       expectMsg(0)
       val lPersistentActor = system.actorOf(Props(classOf[TestPersistentActor], name, testActor))
-      lPersistentActor ! Recover()
       expectMsgPF() {
         case (SnapshotMetadata(`persistenceId`, 0, timestamp), state) ⇒
           state should ===(new MySnapshot("blahonga"))

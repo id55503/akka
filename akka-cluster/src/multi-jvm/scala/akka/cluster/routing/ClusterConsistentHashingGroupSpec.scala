@@ -1,5 +1,5 @@
 /**
- *  Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ *  Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.routing
 
@@ -73,8 +73,10 @@ abstract class ClusterConsistentHashingGroupSpec extends MultiNodeSpec(ClusterCo
         case s: String ⇒ s
       }
       val paths = List("/user/dest")
-      val router = system.actorOf(ClusterRouterGroup(local = ConsistentHashingGroup(paths, hashMapping = hashMapping),
-        settings = ClusterRouterGroupSettings(totalInstances = 10, paths, allowLocalRoutees = true, useRole = None)).props(),
+      val router = system.actorOf(
+        ClusterRouterGroup(
+          local = ConsistentHashingGroup(paths, hashMapping = hashMapping),
+          settings = ClusterRouterGroupSettings(totalInstances = 10, paths, allowLocalRoutees = true, useRole = None)).props(),
         "router")
       // it may take some time until router receives cluster member events
       awaitAssert { currentRoutees(router).size should ===(3) }

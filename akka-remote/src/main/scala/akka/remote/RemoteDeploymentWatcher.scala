@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.remote
@@ -30,7 +30,7 @@ private[akka] class RemoteDeploymentWatcher extends Actor with RequiresMessageQu
 
   def receive = {
     case WatchRemote(a, supervisor: InternalActorRef) ⇒
-      supervisors += (a -> supervisor)
+      supervisors += (a → supervisor)
       context.watch(a)
 
     case t @ Terminated(a) if supervisors isDefinedAt a ⇒

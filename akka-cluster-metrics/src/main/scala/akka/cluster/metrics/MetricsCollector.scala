@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.metrics
@@ -7,7 +7,6 @@ package akka.cluster.metrics
 import akka.actor.ActorSystem
 import akka.actor.ExtendedActorSystem
 import akka.event.Logging
-import akka.event.LoggingAdapter
 import akka.ConfigurationException
 import akka.actor.Address
 import java.lang.management.MemoryMXBean
@@ -61,7 +60,7 @@ private[metrics] object MetricsCollector {
     def create(provider: String) = TryNative {
       log.debug(s"Trying ${provider}.")
       system.asInstanceOf[ExtendedActorSystem].dynamicAccess
-        .createInstanceFor[MetricsCollector](provider, List(classOf[ActorSystem] -> system)).get
+        .createInstanceFor[MetricsCollector](provider, List(classOf[ActorSystem] → system)).get
     }
 
     val collector = if (useCustom)
@@ -81,13 +80,14 @@ private[metrics] object MetricsCollector {
  * Loads JVM and system metrics through JMX monitoring beans.
  *
  * @param address The [[akka.actor.Address]] of the node being sampled
- * @param decay how quickly the exponential weighting of past data is decayed
+ * @param decayFactor how quickly the exponential weighting of past data is decayed
  */
 class JmxMetricsCollector(address: Address, decayFactor: Double) extends MetricsCollector {
   import StandardMetrics._
 
   private def this(address: Address, settings: ClusterMetricsSettings) =
-    this(address,
+    this(
+      address,
       EWMA.alpha(settings.CollectorMovingAverageHalfLife, settings.CollectorSampleInterval))
 
   /**
@@ -184,7 +184,7 @@ class JmxMetricsCollector(address: Address, decayFactor: Double) extends Metrics
  * to missing classes or native libraries.
  *
  * @param address The [[akka.actor.Address]] of the node being sampled
- * @param decay how quickly the exponential weighting of past data is decayed
+ * @param decayFactor how quickly the exponential weighting of past data is decayed
  * @param sigar the org.hyperic.Sigar instance
  */
 class SigarMetricsCollector(address: Address, decayFactor: Double, sigar: SigarProxy)
@@ -194,7 +194,8 @@ class SigarMetricsCollector(address: Address, decayFactor: Double, sigar: SigarP
   import org.hyperic.sigar.CpuPerc
 
   def this(address: Address, settings: ClusterMetricsSettings, sigar: SigarProxy) =
-    this(address,
+    this(
+      address,
       EWMA.alpha(settings.CollectorMovingAverageHalfLife, settings.CollectorSampleInterval),
       sigar)
 
@@ -218,7 +219,7 @@ class SigarMetricsCollector(address: Address, decayFactor: Double, sigar: SigarP
   override def metrics(): Set[Metric] = {
     // Must obtain cpuPerc in one shot. See https://github.com/akka/akka/issues/16121
     val cpuPerc = sigar.getCpuPerc
-    super.metrics ++ Set(cpuCombined(cpuPerc), cpuStolen(cpuPerc)).flatten
+    super.metrics union Set(cpuCombined(cpuPerc), cpuStolen(cpuPerc)).flatten
   }
 
   /**

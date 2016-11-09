@@ -1,12 +1,11 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.typed.patterns
 
 import Receptionist._
 import akka.typed.ScalaDSL._
 import akka.typed.AskPattern._
-import scala.concurrent.Future
 import scala.concurrent.duration._
 import akka.typed._
 
@@ -14,22 +13,23 @@ class ReceptionistSpec extends TypedSpec {
 
   trait ServiceA
   case object ServiceKeyA extends ServiceKey[ServiceA]
-  val propsA = Props(Static[ServiceA](msg ⇒ ()))
+  val behaviorA = Static[ServiceA](msg ⇒ ())
 
   trait ServiceB
   case object ServiceKeyB extends ServiceKey[ServiceB]
-  val propsB = Props(Static[ServiceB](msg ⇒ ()))
+  val behaviorB = Static[ServiceB](msg ⇒ ())
 
-  object `A Receptionist` {
+  trait CommonTests {
+    implicit def system: ActorSystem[TypedSpec.Command]
 
     def `must register a service`(): Unit = {
-      val ctx = new EffectfulActorContext("register", Props(behavior), system)
-      val a = Inbox.sync[ServiceA]("a")
-      val r = Inbox.sync[Registered[_]]("r")
+      val ctx = new EffectfulActorContext("register", behavior, 1000, system)
+      val a = Inbox[ServiceA]("a")
+      val r = Inbox[Registered[_]]("r")
       ctx.run(Register(ServiceKeyA, a.ref)(r.ref))
       ctx.getAllEffects() should be(Effect.Watched(a.ref) :: Nil)
       r.receiveMsg() should be(Registered(ServiceKeyA, a.ref))
-      val q = Inbox.sync[Listing[ServiceA]]("q")
+      val q = Inbox[Listing[ServiceA]]("q")
       ctx.run(Find(ServiceKeyA)(q.ref))
       ctx.getAllEffects() should be(Nil)
       q.receiveMsg() should be(Listing(ServiceKeyA, Set(a.ref)))
@@ -37,15 +37,15 @@ class ReceptionistSpec extends TypedSpec {
     }
 
     def `must register two services`(): Unit = {
-      val ctx = new EffectfulActorContext("registertwo", Props(behavior), system)
-      val a = Inbox.sync[ServiceA]("a")
-      val r = Inbox.sync[Registered[_]]("r")
+      val ctx = new EffectfulActorContext("registertwo", behavior, 1000, system)
+      val a = Inbox[ServiceA]("a")
+      val r = Inbox[Registered[_]]("r")
       ctx.run(Register(ServiceKeyA, a.ref)(r.ref))
       r.receiveMsg() should be(Registered(ServiceKeyA, a.ref))
-      val b = Inbox.sync[ServiceB]("b")
+      val b = Inbox[ServiceB]("b")
       ctx.run(Register(ServiceKeyB, b.ref)(r.ref))
       r.receiveMsg() should be(Registered(ServiceKeyB, b.ref))
-      val q = Inbox.sync[Listing[_]]("q")
+      val q = Inbox[Listing[_]]("q")
       ctx.run(Find(ServiceKeyA)(q.ref))
       q.receiveMsg() should be(Listing(ServiceKeyA, Set(a.ref)))
       ctx.run(Find(ServiceKeyB)(q.ref))
@@ -54,15 +54,15 @@ class ReceptionistSpec extends TypedSpec {
     }
 
     def `must register two services with the same key`(): Unit = {
-      val ctx = new EffectfulActorContext("registertwosame", Props(behavior), system)
-      val a1 = Inbox.sync[ServiceA]("a1")
-      val r = Inbox.sync[Registered[_]]("r")
+      val ctx = new EffectfulActorContext("registertwosame", behavior, 1000, system)
+      val a1 = Inbox[ServiceA]("a1")
+      val r = Inbox[Registered[_]]("r")
       ctx.run(Register(ServiceKeyA, a1.ref)(r.ref))
       r.receiveMsg() should be(Registered(ServiceKeyA, a1.ref))
-      val a2 = Inbox.sync[ServiceA]("a2")
+      val a2 = Inbox[ServiceA]("a2")
       ctx.run(Register(ServiceKeyA, a2.ref)(r.ref))
       r.receiveMsg() should be(Registered(ServiceKeyA, a2.ref))
-      val q = Inbox.sync[Listing[_]]("q")
+      val q = Inbox[Listing[_]]("q")
       ctx.run(Find(ServiceKeyA)(q.ref))
       q.receiveMsg() should be(Listing(ServiceKeyA, Set(a1.ref, a2.ref)))
       ctx.run(Find(ServiceKeyB)(q.ref))
@@ -71,32 +71,32 @@ class ReceptionistSpec extends TypedSpec {
     }
 
     def `must unregister services when they terminate`(): Unit = {
-      val ctx = new EffectfulActorContext("registertwosame", Props(behavior), system)
-      val r = Inbox.sync[Registered[_]]("r")
-      val a = Inbox.sync[ServiceA]("a")
+      val ctx = new EffectfulActorContext("registertwosame", behavior, 1000, system)
+      val r = Inbox[Registered[_]]("r")
+      val a = Inbox[ServiceA]("a")
       ctx.run(Register(ServiceKeyA, a.ref)(r.ref))
       ctx.getEffect() should be(Effect.Watched(a.ref))
       r.receiveMsg() should be(Registered(ServiceKeyA, a.ref))
 
-      val b = Inbox.sync[ServiceB]("b")
+      val b = Inbox[ServiceB]("b")
       ctx.run(Register(ServiceKeyB, b.ref)(r.ref))
       ctx.getEffect() should be(Effect.Watched(b.ref))
       r.receiveMsg() should be(Registered(ServiceKeyB, b.ref))
 
-      val c = Inbox.sync[Any]("c")
+      val c = Inbox[Any]("c")
       ctx.run(Register(ServiceKeyA, c.ref)(r.ref))
       ctx.run(Register(ServiceKeyB, c.ref)(r.ref))
       ctx.getAllEffects() should be(Seq(Effect.Watched(c.ref), Effect.Watched(c.ref)))
       r.receiveMsg() should be(Registered(ServiceKeyA, c.ref))
       r.receiveMsg() should be(Registered(ServiceKeyB, c.ref))
 
-      val q = Inbox.sync[Listing[_]]("q")
+      val q = Inbox[Listing[_]]("q")
       ctx.run(Find(ServiceKeyA)(q.ref))
       q.receiveMsg() should be(Listing(ServiceKeyA, Set(a.ref, c.ref)))
       ctx.run(Find(ServiceKeyB)(q.ref))
       q.receiveMsg() should be(Listing(ServiceKeyB, Set(b.ref, c.ref)))
 
-      ctx.signal(Terminated(c.ref))
+      ctx.signal(Terminated(c.ref)(null))
       ctx.run(Find(ServiceKeyA)(q.ref))
       q.receiveMsg() should be(Listing(ServiceKeyA, Set(a.ref)))
       ctx.run(Find(ServiceKeyB)(q.ref))
@@ -107,17 +107,16 @@ class ReceptionistSpec extends TypedSpec {
     def `must work with ask`(): Unit = sync(runTest("Receptionist") {
       StepWise[Registered[ServiceA]] { (ctx, startWith) ⇒
         val self = ctx.self
-        import system.executionContext
         startWith.withKeepTraces(true) {
-          val r = ctx.spawnAnonymous(Props(behavior))
-          val s = ctx.spawnAnonymous(propsA)
+          val r = ctx.spawnAnonymous(behavior)
+          val s = ctx.spawnAnonymous(behaviorA)
           val f = r ? Register(ServiceKeyA, s)
           r ! Register(ServiceKeyA, s)(self)
           (f, s)
         }.expectMessage(1.second) {
           case (msg, (f, s)) ⇒
             msg should be(Registered(ServiceKeyA, s))
-            f foreach (self ! _)
+            f.foreach(self ! _)(system.executionContext)
             s
         }.expectMessage(1.second) {
           case (msg, s) ⇒
@@ -127,5 +126,8 @@ class ReceptionistSpec extends TypedSpec {
     })
 
   }
+
+  object `A Receptionist (native)` extends CommonTests with NativeSystem
+  object `A Receptionist (adapted)` extends CommonTests with AdaptedSystem
 
 }

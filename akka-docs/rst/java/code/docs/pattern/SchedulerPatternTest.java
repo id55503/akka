@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package docs.pattern;
@@ -8,13 +8,14 @@ import akka.actor.*;
 import akka.testkit.*;
 import akka.testkit.TestEvent.Mute;
 import akka.testkit.TestEvent.UnMute;
+import docs.AbstractJavaTest;
 import org.junit.*;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
-public class SchedulerPatternTest {
+public class SchedulerPatternTest extends AbstractJavaTest {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource =
@@ -28,7 +29,7 @@ public class SchedulerPatternTest {
 
     private final Cancellable tick = getContext().system().scheduler().schedule(
       Duration.create(500, TimeUnit.MILLISECONDS),
-      Duration.create(1000, TimeUnit.MILLISECONDS),
+      Duration.create(1, TimeUnit.SECONDS),
       getSelf(), "tick", getContext().dispatcher(), null);
     //#schedule-constructor
     // this variable and constructor is declared here to not show up in the docs
@@ -91,7 +92,7 @@ public class SchedulerPatternTest {
       if (message.equals("tick")) {
         // send another periodic tick after the specified delay
         getContext().system().scheduler().scheduleOnce(
-          Duration.create(1000, TimeUnit.MILLISECONDS),
+          Duration.create(1, TimeUnit.SECONDS),
           getSelf(), "tick", getContext().dispatcher(), null);
         // do something useful here
         //#schedule-receive
@@ -128,6 +129,11 @@ public class SchedulerPatternTest {
       final Props props = Props.create(ScheduleInReceive.class, probe.getRef());
       testSchedule(probe, props, duration("3000 millis"), duration("2500 millis"));
     }};
+  }
+  
+  @Test
+  public void doNothing() {
+    // actorSystemResource.after is not called when all tests are ignored
   }
 
   public static class TestSchedule extends JavaTestKit {

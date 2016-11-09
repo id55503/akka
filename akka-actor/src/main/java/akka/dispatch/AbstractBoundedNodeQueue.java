@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.dispatch;
@@ -9,7 +9,7 @@ import akka.util.Unsafe;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Lock-free bounded non-blocking multiple-producer multiple-consumer queue based on the works of:
+ * Lock-free bounded non-blocking multiple-producer single-consumer queue based on the works of:
  *
  * Andriy Plokhotnuyk (https://github.com/plokhotnyuk)
  *   - https://github.com/plokhotnyuk/actors/blob/2e65abb7ce4cbfcb1b29c98ee99303d6ced6b01f/src/test/scala/akka/dispatch/Mailboxes.scala
@@ -129,7 +129,7 @@ public abstract class AbstractBoundedNodeQueue<T> {
     }
 
     public final boolean isEmpty() {
-        return peekNode() == null;
+        return getEnq() == getDeq();
     }
 
     /**
@@ -137,7 +137,7 @@ public abstract class AbstractBoundedNodeQueue<T> {
      */
     public final int size() {
         //Order of operations is extremely important here
-        // If no item was dequeued between when we looked at the count of the enqueueing end,
+        // If no item was dequeued between when we looked at the count of the enqueuing end,
         // there should be no out-of-bounds
         for(;;) {
             final int deqCountBefore = getDeq().count;
@@ -169,6 +169,7 @@ public abstract class AbstractBoundedNodeQueue<T> {
             if (next != null) {
                 if (casDeq(deq, next)) {
                     deq.value = next.value;
+                    deq.setNext(null);
                     next.value = null;
                     return deq;
                 } // else we retry (concurrent consumers)

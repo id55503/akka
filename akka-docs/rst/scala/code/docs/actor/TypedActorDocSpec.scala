@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.actor
 
@@ -121,7 +121,8 @@ class TypedActorDocSpec extends AkkaSpec(Map("akka.loglevel" -> "INFO")) {
     //#typed-actor-create1
     //#typed-actor-create2
     val otherSquarer: Squarer =
-      TypedActor(system).typedActorOf(TypedProps(classOf[Squarer],
+      TypedActor(system).typedActorOf(TypedProps(
+        classOf[Squarer],
         new SquarerImpl("foo")), "name")
     //#typed-actor-create2
 

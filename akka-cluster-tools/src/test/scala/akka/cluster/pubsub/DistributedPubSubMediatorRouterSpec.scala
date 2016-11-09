@@ -3,7 +3,7 @@ package akka.cluster.pubsub
 import akka.testkit._
 import akka.routing.{ ConsistentHashingRoutingLogic, RouterEnvelope }
 import org.scalatest.WordSpecLike
-import akka.actor.{ ActorInitializationException, ActorRef }
+import akka.actor.{ DeadLetter, ActorRef }
 import com.typesafe.config.ConfigFactory
 
 case class WrappedMessage(msg: String) extends RouterEnvelope {
@@ -15,7 +15,7 @@ case class UnwrappedMessage(msg: String)
 object DistributedPubSubMediatorRouterSpec {
   def config(routingLogic: String) = s"""
     akka.loglevel = INFO
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = "cluster"
     akka.remote.netty.tcp.port=0
     akka.remote.log-remote-lifecycle-events = off
     akka.cluster.pub-sub.routing-logic = $routingLogic
@@ -79,6 +79,15 @@ trait DistributedPubSubMediatorRouterSpec { this: WordSpecLike with TestKit with
 
       mediator ! DistributedPubSubMediator.Unsubscribe("topic", testActor)
       expectMsgClass(classOf[DistributedPubSubMediator.UnsubscribeAck])
+    }
+
+    "send message to dead letters if no recipients available" in {
+
+      val probe = TestProbe()
+      system.eventStream.subscribe(probe.ref, classOf[DeadLetter])
+      mediator ! DistributedPubSubMediator.Publish("nowhere", msg, sendOneMessageToEachGroup = true)
+      probe.expectMsgClass(classOf[DeadLetter])
+      system.eventStream.unsubscribe(probe.ref, classOf[DeadLetter])
     }
   }
 }

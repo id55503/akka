@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.metrics.protobuf
@@ -7,41 +7,43 @@ package akka.cluster.metrics.protobuf
 import java.io.{ ByteArrayInputStream, ByteArrayOutputStream, ObjectOutputStream }
 import java.util.zip.{ GZIPInputStream, GZIPOutputStream }
 import java.{ lang ⇒ jl }
-
 import akka.actor.{ Address, ExtendedActorSystem }
 import akka.cluster.metrics.protobuf.msg.{ ClusterMetricsMessages ⇒ cm }
-import akka.cluster.metrics.{ ClusterMetricsMessage, ClusterMetricsSettings, EWMA, Metric, MetricsGossip, MetricsGossipEnvelope, NodeMetrics }
+import akka.cluster.metrics.{ EWMA, Metric, MetricsGossip, MetricsGossipEnvelope, NodeMetrics }
 import akka.serialization.BaseSerializer
 import akka.util.ClassLoaderObjectInputStream
-import com.google.protobuf.{ ByteString, MessageLite }
-
+import akka.protobuf.{ ByteString, MessageLite }
 import scala.annotation.tailrec
 import scala.collection.JavaConverters.{ asJavaIterableConverter, asScalaBufferConverter, setAsJavaSetConverter }
+import akka.serialization.SerializerWithStringManifest
 
 /**
  * Protobuf serializer for [[akka.cluster.metrics.ClusterMetricsMessage]] types.
  */
-class MessageSerializer(val system: ExtendedActorSystem) extends BaseSerializer {
+class MessageSerializer(val system: ExtendedActorSystem) extends SerializerWithStringManifest with BaseSerializer {
 
   private final val BufferSize = 4 * 1024
 
-  private val fromBinaryMap = collection.immutable.HashMap[Class[_ <: ClusterMetricsMessage], Array[Byte] ⇒ AnyRef](
-    classOf[MetricsGossipEnvelope] -> metricsGossipEnvelopeFromBinary)
+  private val MetricsGossipEnvelopeManifest = "a"
 
-  override val includeManifest: Boolean = true
+  override def manifest(obj: AnyRef): String = obj match {
+    case _: MetricsGossipEnvelope ⇒ MetricsGossipEnvelopeManifest
+    case _ ⇒
+      throw new IllegalArgumentException(s"Can't serialize object of type ${obj.getClass} in [${getClass.getName}]")
+  }
 
   override def toBinary(obj: AnyRef): Array[Byte] = obj match {
     case m: MetricsGossipEnvelope ⇒
       compress(metricsGossipEnvelopeToProto(m))
     case _ ⇒
-      throw new IllegalArgumentException(s"Can't serialize object of type ${obj.getClass}")
+      throw new IllegalArgumentException(s"Can't serialize object of type ${obj.getClass} in [${getClass.getName}]")
   }
 
   def compress(msg: MessageLite): Array[Byte] = {
     val bos = new ByteArrayOutputStream(BufferSize)
     val zip = new GZIPOutputStream(bos)
-    msg.writeTo(zip)
-    zip.close()
+    try msg.writeTo(zip)
+    finally zip.close()
     bos.toByteArray
   }
 
@@ -57,16 +59,15 @@ class MessageSerializer(val system: ExtendedActorSystem) extends BaseSerializer 
         readChunk()
     }
 
-    readChunk()
+    try readChunk()
+    finally in.close()
     out.toByteArray
   }
 
-  def fromBinary(bytes: Array[Byte], clazz: Option[Class[_]]): AnyRef = clazz match {
-    case Some(c) ⇒ fromBinaryMap.get(c.asInstanceOf[Class[ClusterMetricsMessage]]) match {
-      case Some(f) ⇒ f(bytes)
-      case None    ⇒ throw new IllegalArgumentException(s"Unimplemented deserialization of message class $c in metrics")
-    }
-    case _ ⇒ throw new IllegalArgumentException("Need a metrics message class to be able to deserialize bytes in metrics")
+  override def fromBinary(bytes: Array[Byte], manifest: String): AnyRef = manifest match {
+    case MetricsGossipEnvelopeManifest ⇒ metricsGossipEnvelopeFromBinary(bytes)
+    case _ ⇒ throw new IllegalArgumentException(
+      s"Unimplemented deserialization of message with manifest [$manifest] in [${getClass.getName}")
   }
 
   private def addressToProto(address: Address): cm.Address.Builder = address match {
@@ -176,7 +177,8 @@ class MessageSerializer(val system: ExtendedActorSystem) extends BaseSerializer 
         case NumberType.Float_VALUE   ⇒ jl.Float.intBitsToFloat(number.getValue32)
         case NumberType.Integer_VALUE ⇒ number.getValue32
         case NumberType.Serialized_VALUE ⇒
-          val in = new ClassLoaderObjectInputStream(system.dynamicAccess.classLoader,
+          val in = new ClassLoaderObjectInputStream(
+            system.dynamicAccess.classLoader,
             new ByteArrayInputStream(number.getSerialized.toByteArray))
           val obj = in.readObject
           in.close()

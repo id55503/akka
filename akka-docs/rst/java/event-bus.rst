@@ -115,7 +115,7 @@ type :class:`ActorRef`.
 
 This classification requires an :class:`ActorSystem` in order to perform book-keeping
 operations related to the subscribers being Actors, which can terminate without first
-unsubscribing from the EventBus. ManagedActorClassification maitains a system Actor which
+unsubscribing from the EventBus. ManagedActorClassification maintains a system Actor which
 takes care of unsubscribing terminated actors automatically.
 
 The necessary methods to be implemented are illustrated with the following example:
@@ -148,11 +148,17 @@ it can be subscribed like this:
 
 .. includecode:: code/docs/event/LoggingDocTest.java#deadletters
 
-Similarily to `Actor Classification`_, :class:`EventStream` will automatically remove subscibers when they terminate.
+It is also worth pointing out that thanks to the way the subchannel classification
+is implemented in the event stream, it is possible to subscribe to a group of events, by
+subscribing to their common superclass as demonstrated in the following example:
+
+.. includecode:: code/docs/event/LoggingDocTest.java#superclass-subscription-eventstream
+
+Similarly to `Actor Classification`_, :class:`EventStream` will automatically remove subscribers when they terminate.
 
 .. note::
    The event stream is a *local facility*, meaning that it will *not* distribute events to other nodes in a clustered environment (unless you subscribe a Remote Actor to the stream explicitly).
-   If you need to broadcast events in an Akka cluster, *without* knowing your recipients explicitly (i.e. obtaining their ActorRefs), you may want to look into: :ref:`distributed-pub-sub`.
+   If you need to broadcast events in an Akka cluster, *without* knowing your recipients explicitly (i.e. obtaining their ActorRefs), you may want to look into: :ref:`distributed-pub-sub-java`.
 
 Default Handlers
 ----------------

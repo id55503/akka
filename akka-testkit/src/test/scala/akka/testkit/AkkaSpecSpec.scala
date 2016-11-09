@@ -1,9 +1,8 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit
 
-import language.reflectiveCalls
 import language.postfixOps
 
 import org.scalatest.WordSpec
@@ -15,7 +14,6 @@ import scala.concurrent.duration._
 import akka.actor.DeadLetter
 import akka.pattern.ask
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class AkkaSpecSpec extends WordSpec with Matchers {
 
   "An AkkaSpec" must {
@@ -36,8 +34,8 @@ class AkkaSpecSpec extends WordSpec with Matchers {
       // verbose config just for demonstration purposes, please leave in in case of debugging
       import scala.collection.JavaConverters._
       val conf = Map(
-        "akka.actor.debug.lifecycle" -> true, "akka.actor.debug.event-stream" -> true,
-        "akka.loglevel" -> "DEBUG", "akka.stdout-loglevel" -> "DEBUG")
+        "akka.actor.debug.lifecycle" → true, "akka.actor.debug.event-stream" → true,
+        "akka.loglevel" → "DEBUG", "akka.stdout-loglevel" → "DEBUG")
       val system = ActorSystem("AkkaSpec1", ConfigFactory.parseMap(conf.asJava).withFallback(AkkaSpec.testConf))
       var refs = Seq.empty[ActorRef]
       val spec = new AkkaSpec(system) { refs = Seq(testActor, system.actorOf(Props.empty, "name")) }

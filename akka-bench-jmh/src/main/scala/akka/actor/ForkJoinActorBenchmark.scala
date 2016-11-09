@@ -1,15 +1,14 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
 import akka.testkit.TestProbe
 import com.typesafe.config.ConfigFactory
 import org.openjdk.jmh.annotations._
-
 import scala.concurrent.duration._
-
 import java.util.concurrent.TimeUnit
+import scala.concurrent.Await
 
 @State(Scope.Benchmark)
 @BenchmarkMode(Array(Mode.Throughput))
@@ -29,7 +28,7 @@ class ForkJoinActorBenchmark {
   implicit var system: ActorSystem = _
 
   @Setup(Level.Trial)
-  def setup() {
+  def setup(): Unit = {
     system = ActorSystem("ForkJoinActorBenchmark", ConfigFactory.parseString(
       s"""| akka {
         |   log-dead-letters = off
@@ -45,19 +44,20 @@ class ForkJoinActorBenchmark {
         |     }
         |   }
         | }
-      """.stripMargin))
+      """.stripMargin
+    ))
   }
 
   @TearDown(Level.Trial)
-  def shutdown() {
-    system.shutdown()
-    system.awaitTermination()
+  def shutdown(): Unit = {
+    system.terminate()
+    Await.ready(system.whenTerminated, 15.seconds)
   }
 
   @Benchmark
   @Measurement(timeUnit = TimeUnit.MILLISECONDS)
   @OperationsPerInvocation(messages)
-  def pingPong = {
+  def pingPong(): Unit = {
     val ping = system.actorOf(Props[ForkJoinActorBenchmark.PingPong])
     val pong = system.actorOf(Props[ForkJoinActorBenchmark.PingPong])
 
@@ -73,7 +73,7 @@ class ForkJoinActorBenchmark {
   @Benchmark
   @Measurement(timeUnit = TimeUnit.MILLISECONDS)
   @OperationsPerInvocation(messages)
-  def floodPipe = {
+  def floodPipe(): Unit = {
 
     val end = system.actorOf(Props(classOf[ForkJoinActorBenchmark.Pipe], None))
     val middle = system.actorOf(Props(classOf[ForkJoinActorBenchmark.Pipe], Some(end)))
@@ -105,10 +105,10 @@ object ForkJoinActorBenchmark {
   class Pipe(next: Option[ActorRef]) extends Actor {
     def receive = {
       case m @ `message` =>
-        if(next.isDefined) next.get forward m
-      case s @ `stop` => 
+        if (next.isDefined) next.get forward m
+      case s @ `stop` =>
         context stop self
-        if(next.isDefined) next.get forward s
+        if (next.isDefined) next.get forward s
     }
   }
   class PingPong extends Actor {

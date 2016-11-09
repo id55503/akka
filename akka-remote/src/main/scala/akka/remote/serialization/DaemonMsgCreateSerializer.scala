@@ -1,14 +1,13 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.remote.serialization
 
 import akka.serialization.{ BaseSerializer, SerializationExtension }
-import java.io.Serializable
-import com.google.protobuf.ByteString
+import akka.protobuf.ByteString
 import com.typesafe.config.{ Config, ConfigFactory }
-import akka.actor.{ Actor, ActorRef, Deploy, ExtendedActorSystem, NoScopeGiven, Props, Scope }
+import akka.actor.{ Deploy, ExtendedActorSystem, NoScopeGiven, Props, Scope }
 import akka.remote.DaemonMsgCreate
 import akka.remote.WireFormats.{ DaemonMsgCreateData, DeployData, PropsData }
 import akka.routing.{ NoRouter, RouterConfig }
@@ -16,7 +15,7 @@ import scala.reflect.ClassTag
 import util.{ Failure, Success }
 
 /**
- * Serializes akka's internal DaemonMsgCreate using protobuf
+ * Serializes Akka's internal DaemonMsgCreate using protobuf
  * for the core structure of DaemonMsgCreate, Props and Deploy.
  * Serialization of contained RouterConfig, Config, and Scope
  * is done with configured serializer for those classes, by

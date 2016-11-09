@@ -1,18 +1,8 @@
-import akka.{ AkkaBuild, Dependencies, Formatting, MultiNode, Unidoc, OSGi }
-import com.typesafe.tools.mima.plugin.MimaKeys
+import akka.{ AkkaBuild, Dependencies, Formatting, MultiNode, ScaladocNoVerificationOfDiagrams, OSGi }
 
 AkkaBuild.defaultSettings
-
 Formatting.formatSettings
-
-Unidoc.scaladocSettingsNoVerificationOfDiagrams
-
-Unidoc.javadocSettings
-
 OSGi.clusterTools
-
-MultiNode.multiJvmSettings
-
 Dependencies.clusterTools
 
-//MimaKeys.previousArtifact := akkaPreviousArtifact("akka-cluster-tools").value
+enablePlugins(MultiNode, ScaladocNoVerificationOfDiagrams)

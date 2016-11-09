@@ -1,11 +1,10 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.routing
 
 import scala.collection.immutable
 import akka.ConfigurationException
-import akka.actor.Actor
 import akka.actor.ActorContext
 import akka.actor.ActorPath
 import akka.actor.AutoReceivedMessage
@@ -40,6 +39,7 @@ trait RouterConfig extends Serializable {
 
   /**
    * Create the actual router, responsible for routing messages to routees.
+   *
    * @param system the ActorSystem this router belongs to
    */
   def createRouter(system: ActorSystem): Router
@@ -54,7 +54,7 @@ trait RouterConfig extends Serializable {
    * Possibility to define an actor for controlling the routing
    * logic from external stimuli (e.g. monitoring metrics).
    * This actor will be a child of the router "head" actor.
-   * Managment messages not handled by the "head" actor are
+   * Management messages not handled by the "head" actor are
    * delegated to this controller actor.
    */
   def routingLogicController(routingLogic: RoutingLogic): Option[Props] = None
@@ -128,9 +128,20 @@ private[akka] trait PoolOverrideUnsetConfig[T <: Pool] extends Pool {
  * Java API: Base class for custom router [[Group]]
  */
 abstract class GroupBase extends Group {
-  def getPaths: java.lang.Iterable[String]
+  @deprecated("Implement getPaths with ActorSystem parameter instead", "2.4")
+  def getPaths: java.lang.Iterable[String] = null
 
-  override final def paths: immutable.Iterable[String] = immutableSeq(getPaths)
+  @deprecated("Use paths with ActorSystem parameter instead", "2.4")
+  override final def paths: immutable.Iterable[String] = {
+    val tmp = getPaths
+    if (tmp != null) immutableSeq(tmp)
+    else null
+  }
+
+  def getPaths(system: ActorSystem): java.lang.Iterable[String]
+
+  override final def paths(system: ActorSystem): immutable.Iterable[String] =
+    immutableSeq(getPaths(system))
 }
 
 /**
@@ -140,7 +151,10 @@ abstract class GroupBase extends Group {
  */
 trait Group extends RouterConfig {
 
-  def paths: immutable.Iterable[String]
+  @deprecated("Implement paths with ActorSystem parameter instead", "2.4")
+  def paths: immutable.Iterable[String] = null
+
+  def paths(system: ActorSystem): immutable.Iterable[String]
 
   /**
    * [[akka.actor.Props]] for a group router based on the settings defined by
@@ -259,7 +273,9 @@ abstract class CustomRouterConfig extends RouterConfig {
 }
 
 /**
- * Router configuration which has no default, i.e. external configuration is required.
+ * Wraps a [[akka.actor.Props]] to mark the actor as externally configurable to be used with a router.
+ * If a [[akka.actor.Props]] is not wrapped with [[FromConfig]] then the actor will ignore the router part of the deployment section
+ * in the configuration.
  */
 case object FromConfig extends FromConfig {
   /**
@@ -267,24 +283,27 @@ case object FromConfig extends FromConfig {
    */
   def getInstance = this
   @inline final def apply(
-    resizer: Option[Resizer] = None,
+    resizer:            Option[Resizer]    = None,
     supervisorStrategy: SupervisorStrategy = Pool.defaultSupervisorStrategy,
-    routerDispatcher: String = Dispatchers.DefaultDispatcherId) =
+    routerDispatcher:   String             = Dispatchers.DefaultDispatcherId) =
     new FromConfig(resizer, supervisorStrategy, routerDispatcher)
 
   @inline final def unapply(fc: FromConfig): Option[String] = Some(fc.routerDispatcher)
 }
 
 /**
- * Java API: Router configuration which has no default, i.e. external configuration is required.
+ * Java API: Wraps a [[akka.actor.Props]] to mark the actor as externally configurable to be used with a router.
+ * If a [[akka.actor.Props]] is not wrapped with [[FromConfig]] then the actor will ignore the router part of the deployment section
+ * in the configuration.
  *
  * This can be used when the dispatcher to be used for the head Router needs to be configured
  * (defaults to default-dispatcher).
  */
 @SerialVersionUID(1L)
-class FromConfig(override val resizer: Option[Resizer],
-                 override val supervisorStrategy: SupervisorStrategy,
-                 override val routerDispatcher: String) extends Pool {
+class FromConfig(
+  override val resizer:            Option[Resizer],
+  override val supervisorStrategy: SupervisorStrategy,
+  override val routerDispatcher:   String) extends Pool {
 
   def this() = this(None, Pool.defaultSupervisorStrategy, Dispatchers.DefaultDispatcherId)
 

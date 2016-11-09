@@ -15,7 +15,7 @@
 // ============================================================================
 package akka.remote.security.provider
 
-import org.uncommons.maths.random.{ SeedGenerator, SeedException, SecureRandomSeedGenerator, RandomDotOrgSeedGenerator, DevRandomSeedGenerator }
+import org.uncommons.maths.random.{ SeedGenerator, SeedException, SecureRandomSeedGenerator, RandomDotOrgSeedGenerator }
 import scala.collection.immutable
 
 /**
@@ -25,6 +25,7 @@ import scala.collection.immutable
  * current operating environment.
  * @author Daniel Dyer
  */
+@deprecated("Use another seed generator instead", "2.4")
 object InternetSeedGenerator {
   /**
    * @return The singleton instance of this class.
@@ -35,7 +36,8 @@ object InternetSeedGenerator {
   private final val Instance: InternetSeedGenerator = new InternetSeedGenerator
   /**Delegate generators. */
   private final val Generators: immutable.Seq[SeedGenerator] =
-    List(new RandomDotOrgSeedGenerator, // first try the Internet seed generator
+    List(
+      new RandomDotOrgSeedGenerator, // first try the Internet seed generator
       new SecureRandomSeedGenerator) // this is last because it always works
 }
 

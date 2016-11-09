@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
@@ -9,7 +9,6 @@ import org.scalatest.Matchers
 import akka.actor.Address
 import scala.collection.immutable.SortedSet
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class GossipSpec extends WordSpec with Matchers {
 
   import MemberStatus._

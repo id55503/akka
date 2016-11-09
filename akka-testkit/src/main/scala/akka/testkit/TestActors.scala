@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit
 
@@ -20,6 +20,15 @@ object TestActors {
   }
 
   /**
+   * BlackholeActor does nothing for incoming messages, its like a blackhole.
+   */
+  class BlackholeActor extends Actor {
+    override def receive = {
+      case _ ⇒ // ignore... 
+    }
+  }
+
+  /**
    * ForwardActor forwards all messages as-is to specified ActorRef.
    *
    * @param ref target ActorRef to forward messages to
@@ -31,6 +40,7 @@ object TestActors {
   }
 
   val echoActorProps = Props[EchoActor]()
+  val blackholeProps = Props[BlackholeActor]()
   def forwardActorProps(ref: ActorRef) = Props(classOf[ForwardActor], ref)
 
 }

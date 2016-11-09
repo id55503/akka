@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.metrics
 
@@ -9,7 +9,6 @@ import org.scalatest.Matchers
 import akka.actor.Address
 import akka.cluster.metrics.StandardMetrics._
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class MetricsSelectorSpec extends WordSpec with Matchers {
 
   val factor = 0.3 // TODO read from reference.conf
@@ -63,15 +62,15 @@ class MetricsSelectorSpec extends WordSpec with Matchers {
   "CapacityMetricsSelector" must {
 
     "calculate weights from capacity" in {
-      val capacity = Map(a1 -> 0.6, b1 -> 0.3, c1 -> 0.1)
+      val capacity = Map(a1 → 0.6, b1 → 0.3, c1 → 0.1)
       val weights = abstractSelector.weights(capacity)
-      weights should ===(Map(c1 -> 1, b1 -> 3, a1 -> 6))
+      weights should ===(Map(c1 → 1, b1 → 3, a1 → 6))
     }
 
     "handle low and zero capacity" in {
-      val capacity = Map(a1 -> 0.0, b1 -> 1.0, c1 -> 0.005, d1 -> 0.004)
+      val capacity = Map(a1 → 0.0, b1 → 1.0, c1 → 0.005, d1 → 0.004)
       val weights = abstractSelector.weights(capacity)
-      weights should ===(Map(a1 -> 0, b1 -> 100, c1 -> 1, d1 -> 0))
+      weights should ===(Map(a1 → 0, b1 → 100, c1 → 1, d1 → 0))
     }
 
   }

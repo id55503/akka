@@ -27,7 +27,7 @@ object TransformationSampleSpecConfig extends MultiNodeConfig {
   def nodeList = Seq(frontend1, frontend2, backend1, backend2, backend3)
 
   // Extract individual sigar library for every node.
-  nodeList foreach { role ⇒
+  nodeList foreach { role =>
     nodeConfig(role) {
       ConfigFactory.parseString(s"""
       # Disable legacy metrics in akka-cluster.
@@ -43,7 +43,7 @@ object TransformationSampleSpecConfig extends MultiNodeConfig {
   // this configuration will be used for all nodes
   // note that no fixed host names and ports are used
   commonConfig(ConfigFactory.parseString("""
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = "cluster"
     akka.remote.log-remote-lifecycle-events = off
     """))
 
@@ -81,7 +81,7 @@ abstract class TransformationSampleSpec extends MultiNodeSpec(TransformationSamp
         val transformationFrontend = system.actorOf(Props[TransformationFrontend], name = "frontend")
         transformationFrontend ! new TransformationJob("hello")
         expectMsgPF() {
-          // no backends yet, service unavailble
+          // no backends yet, service unavailable
           case f: JobFailed =>
         }
       }

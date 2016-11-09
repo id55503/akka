@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit.metrics.reporter
 
@@ -15,8 +15,8 @@ import scala.reflect.ClassTag
  */
 class AkkaConsoleReporter(
   registry: AkkaMetricRegistry,
-  verbose: Boolean,
-  output: PrintStream = System.out)
+  verbose:  Boolean,
+  output:   PrintStream        = System.out)
   extends ScheduledReporter(registry.asInstanceOf[MetricRegistry], "akka-console-reporter", MetricFilter.ALL, TimeUnit.SECONDS, TimeUnit.NANOSECONDS) {
 
   private final val ConsoleWidth = 80
@@ -103,7 +103,7 @@ class AkkaConsoleReporter(
 
   private def printKnownOpsInTimespanCounter(counter: KnownOpsInTimespanTimer) {
     import concurrent.duration._
-    import PrettyDuration._
+    import akka.util.PrettyDuration._
     output.print("               ops = %d%n".format(counter.getCount))
     output.print("              time = %s%n".format(counter.elapsedTime.nanos.pretty))
     output.print("             ops/s = %2.2f%n".format(counter.opsPerSecond))

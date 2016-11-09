@@ -1,17 +1,15 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.dispatch
 
-import java.util.concurrent.{ ConcurrentHashMap, TimeUnit, ThreadFactory }
+import java.util.concurrent.{ ConcurrentHashMap, ThreadFactory }
 import com.typesafe.config.{ ConfigFactory, Config }
 import akka.actor.{ Scheduler, DynamicAccess, ActorSystem }
 import akka.event.Logging.Warning
 import akka.event.EventStream
-import scala.concurrent.duration.Duration
 import akka.ConfigurationException
-import akka.actor.Deploy
 import akka.util.Helpers.ConfigOps
 import scala.concurrent.ExecutionContext
 
@@ -32,12 +30,12 @@ trait DispatcherPrerequisites {
  * INTERNAL API
  */
 private[akka] final case class DefaultDispatcherPrerequisites(
-  val threadFactory: ThreadFactory,
-  val eventStream: EventStream,
-  val scheduler: Scheduler,
-  val dynamicAccess: DynamicAccess,
-  val settings: ActorSystem.Settings,
-  val mailboxes: Mailboxes,
+  val threadFactory:           ThreadFactory,
+  val eventStream:             EventStream,
+  val scheduler:               Scheduler,
+  val dynamicAccess:           DynamicAccess,
+  val settings:                ActorSystem.Settings,
+  val mailboxes:               Mailboxes,
   val defaultExecutionContext: Option[ExecutionContext]) extends DispatcherPrerequisites
 
 object Dispatchers {
@@ -137,13 +135,13 @@ class Dispatchers(val settings: ActorSystem.Settings, val prerequisites: Dispatc
     def simpleName = id.substring(id.lastIndexOf('.') + 1)
     idConfig(id)
       .withFallback(appConfig)
-      .withFallback(ConfigFactory.parseMap(Map("name" -> simpleName).asJava))
+      .withFallback(ConfigFactory.parseMap(Map("name" → simpleName).asJava))
       .withFallback(defaultDispatcherConfig)
   }
 
   private def idConfig(id: String): Config = {
     import scala.collection.JavaConverters._
-    ConfigFactory.parseMap(Map("id" -> id).asJava)
+    ConfigFactory.parseMap(Map("id" → id).asJava)
   }
 
   /**
@@ -182,7 +180,7 @@ class Dispatchers(val settings: ActorSystem.Settings, val prerequisites: Dispatc
           classOf[BalancingDispatcherConfigurator].getName)
       case "PinnedDispatcher" ⇒ new PinnedDispatcherConfigurator(cfg, prerequisites)
       case fqn ⇒
-        val args = List(classOf[Config] -> cfg, classOf[DispatcherPrerequisites] -> prerequisites)
+        val args = List(classOf[Config] → cfg, classOf[DispatcherPrerequisites] → prerequisites)
         prerequisites.dynamicAccess.createInstanceFor[MessageDispatcherConfigurator](fqn, args).recover({
           case exception ⇒
             throw new ConfigurationException(
@@ -290,7 +288,8 @@ class PinnedDispatcherConfigurator(config: Config, prerequisites: DispatcherPrer
     case e: ThreadPoolExecutorConfigurator ⇒ e.threadPoolConfig
     case other ⇒
       prerequisites.eventStream.publish(
-        Warning("PinnedDispatcherConfigurator",
+        Warning(
+          "PinnedDispatcherConfigurator",
           this.getClass,
           "PinnedDispatcher [%s] not configured to use ThreadPoolExecutor, falling back to default config.".format(
             config.getString("id"))))

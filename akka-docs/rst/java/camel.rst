@@ -281,7 +281,7 @@ Actors may also use a Camel `ProducerTemplate`_ for producing messages to endpoi
 
 .. includecode:: code/docs/camel/MyActor.java#ProducerTemplate
 
-For initiating a a two-way message exchange, one of the
+For initiating a two-way message exchange, one of the
 ``ProducerTemplate.request*`` methods must be used.
 
 .. includecode:: code/docs/camel/RequestBodyActor.java#RequestProducerTemplate
@@ -475,8 +475,8 @@ __ https://svn.apache.org/repos/asf/camel/tags/camel-2.8.0/camel-core/src/main/j
 Examples
 ========
 
-The `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_
-tutorial named `Akka Camel Samples with Java <http://www.typesafe.com/activator/template/akka-sample-camel-java>`_
+The `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_
+tutorial named `Akka Camel Samples with Java <http://www.lightbend.com/activator/template/akka-sample-camel-java>`_
 contains 3 samples:
 
  * Asynchronous routing and transformation - This example demonstrates how to implement consumer and 

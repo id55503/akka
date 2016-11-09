@@ -1,14 +1,14 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
 import akka.actor._
 import akka.event.AddressTerminatedTopic
 import akka.pattern.ask
-import akka.remote.transport.AssociationHandle.{ HandleEventListener, InboundPayload, HandleEvent }
+import akka.remote.transport.AssociationHandle.{ HandleEventListener, HandleEvent }
 import akka.remote.transport._
-import akka.remote.transport.Transport.{ AssociationEvent, InvalidAssociationException }
+import akka.remote.transport.Transport.InvalidAssociationException
 import akka.testkit._
 import akka.util.ByteString
 import com.typesafe.config._
@@ -16,7 +16,7 @@ import java.io.NotSerializableException
 import scala.concurrent.Await
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.concurrent.forkjoin.ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom
 import akka.testkit.SocketUtil.temporaryServerAddress
 
 object RemotingSpec {
@@ -68,7 +68,7 @@ object RemotingSpec {
       key-store-password = "changeme"
       key-password = "changeme"
       trust-store-password = "changeme"
-      protocol = "TLSv1"
+      protocol = "TLSv1.2"
       random-number-generator = "AES128CounterSecureRNG"
       enabled-algorithms = [TLS_RSA_WITH_AES_128_CBC_SHA]
     }
@@ -79,11 +79,9 @@ object RemotingSpec {
     }
 
     akka {
-      actor.provider = "akka.remote.RemoteActorRefProvider"
+      actor.provider = remote
 
       remote {
-        transport = "akka.remote.Remoting"
-
         retry-gate-closed-for = 1 s
         log-remote-lifecycle-events = on
 
@@ -127,7 +125,6 @@ object RemotingSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with DefaultTimeout {
 
   import RemotingSpec._
@@ -143,9 +140,9 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
 
   for (
     (name, proto) ← Seq(
-      "/gonk" -> "tcp",
-      "/zagzag" -> "udp",
-      "/roghtaar" -> "ssl.tcp")
+      "/gonk" → "tcp",
+      "/zagzag" → "udp",
+      "/roghtaar" → "ssl.tcp")
   ) deploy(system, Deploy(name, scope = RemoteScope(addr(remoteSystem, proto))))
 
   def addr(sys: ActorSystem, proto: String) =
@@ -461,8 +458,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
 
     "be able to use multiple transports and use the appropriate one (TCP)" in {
       val r = system.actorOf(Props[Echo1], "gonk")
-      r.path.toString should be ===
-        s"akka.tcp://remote-sys@localhost:${port(remoteSystem, "tcp")}/remote/akka.tcp/RemotingSpec@localhost:${port(system, "tcp")}/user/gonk"
+      r.path.toString should ===(s"akka.tcp://remote-sys@localhost:${port(remoteSystem, "tcp")}/remote/akka.tcp/RemotingSpec@localhost:${port(system, "tcp")}/user/gonk")
       r ! 42
       expectMsg(42)
       EventFilter[Exception]("crash", occurrences = 1).intercept {
@@ -477,8 +473,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
 
     "be able to use multiple transports and use the appropriate one (UDP)" in {
       val r = system.actorOf(Props[Echo1], "zagzag")
-      r.path.toString should be ===
-        s"akka.udp://remote-sys@localhost:${port(remoteSystem, "udp")}/remote/akka.udp/RemotingSpec@localhost:${port(system, "udp")}/user/zagzag"
+      r.path.toString should ===(s"akka.udp://remote-sys@localhost:${port(remoteSystem, "udp")}/remote/akka.udp/RemotingSpec@localhost:${port(system, "udp")}/user/zagzag")
       r ! 42
       expectMsg(10.seconds, 42)
       EventFilter[Exception]("crash", occurrences = 1).intercept {
@@ -493,8 +488,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
 
     "be able to use multiple transports and use the appropriate one (SSL)" in {
       val r = system.actorOf(Props[Echo1], "roghtaar")
-      r.path.toString should be ===
-        s"akka.ssl.tcp://remote-sys@localhost:${port(remoteSystem, "ssl.tcp")}/remote/akka.ssl.tcp/RemotingSpec@localhost:${port(system, "ssl.tcp")}/user/roghtaar"
+      r.path.toString should ===(s"akka.ssl.tcp://remote-sys@localhost:${port(remoteSystem, "ssl.tcp")}/remote/akka.ssl.tcp/RemotingSpec@localhost:${port(system, "ssl.tcp")}/user/roghtaar")
       r ! 42
       expectMsg(10.seconds, 42)
       EventFilter[Exception]("crash", occurrences = 1).intercept {
@@ -520,7 +514,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
       val maxProtocolOverhead = 500 // Make sure we're still under size after the message is serialized, etc
       val big = byteStringOfSize(maxPayloadBytes - maxProtocolOverhead)
       verifySend(big) {
-        expectMsg(1.second, big)
+        expectMsg(3.seconds, big)
       }
     }
 
@@ -563,7 +557,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
         val otherGuyRemoteTest = otherGuy.path.toSerializationFormatWithAddress(addr(otherSystem, "test"))
         val remoteEchoHereSsl = system.actorFor(s"akka.ssl.tcp://remote-sys@localhost:${port(remoteSystem, "ssl.tcp")}/user/echo")
         val proxySsl = system.actorOf(Props(classOf[Proxy], remoteEchoHereSsl, testActor), "proxy-ssl")
-        EventFilter[RemoteTransportException](start = "Error while resolving address", occurrences = 1).intercept {
+        EventFilter.warning(start = "Error while resolving ActorRef", occurrences = 1).intercept {
           proxySsl ! otherGuy
           expectMsg(3.seconds, ("pong", otherGuyRemoteTest))
         }(otherSystem)
@@ -621,7 +615,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
         val probe = new TestProbe(thisSystem)
         val otherSelection = thisSystem.actorSelection(ActorPath.fromString(remoteAddress.toString + "/user/noonethere"))
         otherSelection.tell("ping", probe.ref)
-        probe.expectNoMsg(1 seconds)
+        probe.expectNoMsg(1.second)
 
         terminatedListener.lastMsg should be(null)
 
@@ -637,7 +631,7 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
       val config = ConfigFactory.parseString(s"""
         akka.remote.enabled-transports = ["akka.remote.test"]
         akka.remote.retry-gate-closed-for = 5s
-        akka.remote.log-lifecylce-events = on
+        akka.remote.log-remote-lifecycle-events = on
         #akka.loglevel = DEBUG
 
         akka.remote.test {
@@ -703,6 +697,87 @@ class RemotingSpec extends AkkaSpec(RemotingSpec.cfg) with ImplicitSender with D
         remoteHandle.association.write(handshakePacket)
 
         inboundHandleProbe.expectMsgType[AssociationHandle.Disassociated]
+      } finally shutdown(thisSystem)
+
+    }
+
+    "should properly quarantine stashed inbound connections" in {
+      val localAddress = Address("akka.test", "system1", "localhost", 1)
+      val rawLocalAddress = localAddress.copy(protocol = "test")
+      val remoteAddress = Address("akka.test", "system2", "localhost", 2)
+      val rawRemoteAddress = remoteAddress.copy(protocol = "test")
+      val remoteUID = 16
+
+      val config = ConfigFactory.parseString(s"""
+        akka.remote.enabled-transports = ["akka.remote.test"]
+        akka.remote.retry-gate-closed-for = 5s
+        akka.remote.log-remote-lifecycle-events = on
+
+        akka.remote.test {
+          registry-key = JMeMndLLsw
+          local-address = "test://${localAddress.system}@${localAddress.host.get}:${localAddress.port.get}"
+        }
+        """).withFallback(remoteSystem.settings.config)
+      val thisSystem = ActorSystem("this-system", config)
+      muteSystem(thisSystem)
+
+      try {
+
+        // Set up a mock remote system using the test transport
+        val registry = AssociationRegistry.get("JMeMndLLsw")
+        val remoteTransport = new TestTransport(rawRemoteAddress, registry)
+        val remoteTransportProbe = TestProbe()
+
+        registry.registerTransport(remoteTransport, associationEventListenerFuture = Future.successful(new Transport.AssociationEventListener {
+          override def notify(ev: Transport.AssociationEvent): Unit = remoteTransportProbe.ref ! ev
+        }))
+
+        val outboundHandle = new TestAssociationHandle(rawLocalAddress, rawRemoteAddress, remoteTransport, inbound = false)
+
+        // Hijack associations through the test transport
+        awaitCond(registry.transportsReady(rawLocalAddress, rawRemoteAddress))
+        val testTransport = registry.transportFor(rawLocalAddress).get._1
+        testTransport.writeBehavior.pushConstant(true)
+
+        // Force an outbound associate on the real system (which we will hijack)
+        // we send no handshake packet, so this remains a pending connection
+        val dummySelection = thisSystem.actorSelection(ActorPath.fromString(remoteAddress.toString + "/user/noonethere"))
+        dummySelection.tell("ping", system.deadLetters)
+
+        val remoteHandle = remoteTransportProbe.expectMsgType[Transport.InboundAssociation]
+        remoteHandle.association.readHandlerPromise.success(new HandleEventListener {
+          override def notify(ev: HandleEvent): Unit = ()
+        })
+
+        // Now we initiate an emulated inbound connection to the real system
+        val inboundHandleProbe = TestProbe()
+        val inboundHandle = Await.result(remoteTransport.associate(rawLocalAddress), 3.seconds)
+        inboundHandle.readHandlerPromise.success(new AssociationHandle.HandleEventListener {
+          override def notify(ev: HandleEvent): Unit = inboundHandleProbe.ref ! ev
+        })
+
+        awaitAssert {
+          registry.getRemoteReadHandlerFor(inboundHandle.asInstanceOf[TestAssociationHandle]).get
+        }
+
+        val handshakePacket = AkkaPduProtobufCodec.constructAssociate(HandshakeInfo(rawRemoteAddress, uid = remoteUID, cookie = None))
+
+        // Finish the inbound handshake so now it is handed up to Remoting
+        inboundHandle.write(handshakePacket)
+
+        // No disassociation now, the connection is still stashed
+        inboundHandleProbe.expectNoMsg(1.second)
+
+        // Quarantine unrelated connection
+        RARP(thisSystem).provider.quarantine(remoteAddress, Some(-1), "test")
+        inboundHandleProbe.expectNoMsg(1.second)
+
+        // Quarantine the connection
+        RARP(thisSystem).provider.quarantine(remoteAddress, Some(remoteUID.toLong), "test")
+
+        // Even though the connection is stashed it will be disassociated
+        inboundHandleProbe.expectMsgType[AssociationHandle.Disassociated]
+
       } finally shutdown(thisSystem)
 
     }

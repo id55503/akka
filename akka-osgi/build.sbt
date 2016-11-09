@@ -1,18 +1,9 @@
-import akka.{ AkkaBuild, Dependencies, Formatting, OSGi, Unidoc }
-import com.typesafe.tools.mima.plugin.MimaKeys
+import akka.{ AkkaBuild, Dependencies, Formatting, OSGi, Dist }
 
 AkkaBuild.defaultSettings
-
+Dist.includeInDist := false
 Formatting.formatSettings
-
-Unidoc.scaladocSettings
-
-Unidoc.javadocSettings
-
 OSGi.osgi
-
 Dependencies.osgi
 
 parallelExecution in Test := false
-
-MimaKeys.reportBinaryIssues := () // disable bin comp check

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2014-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.akka.typed
 
@@ -21,7 +21,7 @@ object IntroSpec {
     final case class Greet(whom: String, replyTo: ActorRef[Greeted])
     final case class Greeted(whom: String)
 
-    val greeter = Static[Greet] { msg ⇒
+    val greeter = Static[Greet] { msg =>
       println(s"Hello ${msg.whom}!")
       msg.replyTo ! Greeted(msg.whom)
     }
@@ -51,17 +51,17 @@ object IntroSpec {
     //#chatroom-behavior
 
     val behavior: Behavior[GetSession] =
-      ContextAware[Command] { ctx ⇒
+      ContextAware[Command] { ctx =>
         var sessions = List.empty[ActorRef[SessionEvent]]
 
         Static {
-          case GetSession(screenName, client) ⇒
+          case GetSession(screenName, client) =>
             sessions ::= client
             val wrapper = ctx.spawnAdapter {
-              p: PostMessage ⇒ PostSessionMessage(screenName, p.message)
+              p: PostMessage => PostSessionMessage(screenName, p.message)
             }
             client ! SessionGranted(wrapper)
-          case PostSessionMessage(screenName, message) ⇒
+          case PostSessionMessage(screenName, message) =>
             val mp = MessagePosted(screenName, message)
             sessions foreach (_ ! mp)
         }
@@ -78,10 +78,10 @@ class IntroSpec extends TypedSpec {
   def `must say hello`(): Unit = {
     //#hello-world
     import HelloWorld._
-    // using global pool since we want to run tasks after system shutdown
+    // using global pool since we want to run tasks after system.terminate
     import scala.concurrent.ExecutionContext.Implicits.global
 
-    val system: ActorSystem[Greet] = ActorSystem("hello", Props(greeter))
+    val system: ActorSystem[Greet] = ActorSystem("hello", greeter)
 
     val future: Future[Greeted] = system ? (Greet("world", _))
 
@@ -98,32 +98,32 @@ class IntroSpec extends TypedSpec {
 
     val gabbler: Behavior[SessionEvent] =
       Total {
-        case SessionDenied(reason) ⇒
+        case SessionDenied(reason) =>
           println(s"cannot start chat room session: $reason")
           Stopped
-        case SessionGranted(handle) ⇒
+        case SessionGranted(handle) =>
           handle ! PostMessage("Hello World!")
           Same
-        case MessagePosted(screenName, message) ⇒
+        case MessagePosted(screenName, message) =>
           println(s"message has been posted by '$screenName': $message")
           Stopped
       }
     //#chatroom-gabbler
 
     //#chatroom-main
-    val main: Behavior[Unit] =
+    val main: Behavior[akka.NotUsed] =
       Full {
-        case Sig(ctx, PreStart) ⇒
-          val chatRoom = ctx.spawn(Props(ChatRoom.behavior), "chatroom")
-          val gabblerRef = ctx.spawn(Props(gabbler), "gabbler")
+        case Sig(ctx, PreStart) =>
+          val chatRoom = ctx.spawn(ChatRoom.behavior, "chatroom")
+          val gabblerRef = ctx.spawn(gabbler, "gabbler")
           ctx.watch(gabblerRef)
           chatRoom ! GetSession("ol’ Gabbler", gabblerRef)
           Same
-        case Sig(_, Terminated(ref)) ⇒
+        case Sig(_, Terminated(ref)) =>
           Stopped
       }
 
-    val system = ActorSystem("ChatRoomDemo", Props(main))
+    val system = ActorSystem("ChatRoomDemo", main)
     Await.result(system.whenTerminated, 1.second)
     //#chatroom-main
   }

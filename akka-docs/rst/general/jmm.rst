@@ -3,8 +3,8 @@
 Akka and the Java Memory Model
 ================================
 
-A major benefit of using the Typesafe Platform, including Scala and Akka, is that it simplifies the process of writing
-concurrent software.  This article discusses how the Typesafe Platform, and Akka in particular, approaches shared memory
+A major benefit of using the Lightbend Platform, including Scala and Akka, is that it simplifies the process of writing
+concurrent software.  This article discusses how the Lightbend Platform, and Akka in particular, approaches shared memory
 in concurrent applications.
 
 The Java Memory Model
@@ -62,24 +62,6 @@ non-final fields, they must be marked *volatile* in order for the current value 
 If you close over a reference, you must also ensure that the instance that is referred to is thread safe.
 We highly recommend staying away from objects that use locking, since it can introduce performance problems and in the worst case, deadlocks.
 Such are the perils of synchronized.
-
-STM and the Java Memory Model
------------------------------
-Akka's Software Transactional Memory (STM) also provides a "happens before" rule:
-
-*  **The transactional reference rule:** a successful write during commit, on an transactional reference, happens before every
-   subsequent read of the same transactional reference.
-
-This rule looks a lot like the 'volatile variable' rule from the JMM. Currently the Akka STM only supports deferred writes,
-so the actual writing to shared memory is deferred until the transaction commits. Writes during the transaction are placed
-in a local buffer (the writeset of the transaction) and are not visible to other transactions. That is why dirty reads are
-not possible.
-
-How these rules are realized in Akka is an implementation detail and can change over time, and the exact details could
-even depend on the used configuration. But they will build on the other JMM rules like the monitor lock rule or the
-volatile variable rule. This means that you, the Akka user, do not need to worry about adding synchronization to provide
-such a "happens before" relation, because it is the responsibility of Akka. So you have your hands free to deal with your
-business logic, and the Akka framework makes sure that those rules are guaranteed on your behalf.
 
 .. _jmm-shared-state:
 

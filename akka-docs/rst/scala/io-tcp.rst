@@ -68,7 +68,7 @@ to listen for TCP connections on a particular :class:`InetSocketAddress`; the
 port may be specified as ``0`` in order to bind to a random port.
 
 The actor sending the :class:`Bind` message will receive a :class:`Bound`
-message signalling that the server is ready to accept incoming connections;
+message signaling that the server is ready to accept incoming connections;
 this message also contains the :class:`InetSocketAddress` to which the socket
 was actually bound (i.e. resolved IP address and correct port number). 
 
@@ -190,7 +190,7 @@ For back-pressuring writes there are three modes of operation
 
 These write back-pressure models (with the exception of the second which is rather specialised) are
 demonstrated in complete examples below. The full and contiguous source is
-available `on github <@github@/akka-docs/rst/scala/code/docs/io/EchoServer.scala>`_.
+available `on GitHub <@github@/akka-docs/rst/scala/code/docs/io/EchoServer.scala>`_.
 
 For back-pressuring reads there are two modes of operation
 

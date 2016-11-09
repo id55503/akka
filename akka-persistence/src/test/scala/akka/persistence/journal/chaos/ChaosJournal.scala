@@ -1,16 +1,17 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.persistence.journal.chaos
 
 import scala.collection.immutable
 import scala.concurrent.Future
-import scala.concurrent.forkjoin.ThreadLocalRandom
-
+import java.util.concurrent.ThreadLocalRandom
 import akka.persistence._
-import akka.persistence.journal.SyncWriteJournal
+import akka.persistence.journal.AsyncWriteJournal
 import akka.persistence.journal.inmem.InmemMessages
+import scala.util.Try
+import scala.util.control.NonFatal
 
 class WriteFailedException(ps: Seq[PersistentRepr])
   extends TestException(s"write failed for payloads = [${ps.map(_.payload)}]")
@@ -27,7 +28,7 @@ class ReadHighestFailedException
  */
 private object ChaosJournalMessages extends InmemMessages
 
-class ChaosJournal extends SyncWriteJournal {
+class ChaosJournal extends AsyncWriteJournal {
   import ChaosJournalMessages.{ delete ⇒ del, _ }
 
   val config = context.system.settings.config.getConfig("akka.persistence.journal.chaos")
@@ -38,14 +39,25 @@ class ChaosJournal extends SyncWriteJournal {
 
   def random = ThreadLocalRandom.current
 
-  def writeMessages(messages: immutable.Seq[PersistentRepr]): Unit =
-    if (shouldFail(writeFailureRate)) throw new WriteFailedException(messages)
-    else messages.foreach(add)
+  override def asyncWriteMessages(messages: immutable.Seq[AtomicWrite]): Future[immutable.Seq[Try[Unit]]] =
+    try Future.successful {
+      if (shouldFail(writeFailureRate)) throw new WriteFailedException(messages.flatMap(_.payload))
+      else
+        for (a ← messages) yield {
+          a.payload.foreach(add)
+          AsyncWriteJournal.successUnit
+        }
+    } catch {
+      case NonFatal(e) ⇒ Future.failed(e)
+    }
 
-  def deleteMessagesTo(persistenceId: String, toSequenceNr: Long, permanent: Boolean): Unit = {
-    (1L to toSequenceNr).foreach { snr ⇒
-      if (permanent) update(persistenceId, snr)(_.update(deleted = true))
-      else del(persistenceId, snr)
+  override def asyncDeleteMessagesTo(persistenceId: String, toSequenceNr: Long): Future[Unit] = {
+    try Future.successful {
+      (1L to toSequenceNr).foreach { snr ⇒
+        del(persistenceId, snr)
+      }
+    } catch {
+      case NonFatal(e) ⇒ Future.failed(e)
     }
   }
 

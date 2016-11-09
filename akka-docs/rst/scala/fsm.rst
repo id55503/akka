@@ -8,7 +8,7 @@ FSM
 Overview
 ========
 
-The FSM (Finite State Machine) is available as a mixin for the akka Actor and
+The FSM (Finite State Machine) is available as a mixin for the Akka Actor and
 is best described in the `Erlang design principles
 <http://www.erlang.org/documentation/doc-4.8.2/doc/design_principles/fsm.html>`_
 
@@ -494,5 +494,5 @@ Examples
 ========
 
 A bigger FSM example contrasted with Actor's :meth:`become`/:meth:`unbecome` can be found in
-the `Typesafe Activator <http://www.typesafe.com/platform/getstarted>`_ template named 
-`Akka FSM in Scala <http://www.typesafe.com/activator/template/akka-sample-fsm-scala>`_
+the `Lightbend Activator <http://www.lightbend.com/platform/getstarted>`_ template named
+`Akka FSM in Scala <http://www.lightbend.com/activator/template/akka-sample-fsm-scala>`_

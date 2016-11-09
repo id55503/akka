@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.config
@@ -7,16 +7,15 @@ package akka.config
 import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
+import akka.event.DefaultLoggingFilter
 import akka.event.Logging.DefaultLogger
 import akka.testkit.AkkaSpec
 import com.typesafe.config.ConfigFactory
+import org.scalatest.Assertions
 
 import scala.concurrent.duration._
-import scala.language.postfixOps
-import akka.event.DefaultLoggingFilter
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
-class ConfigSpec extends AkkaSpec(ConfigFactory.defaultReference(ActorSystem.findClassLoader())) {
+class ConfigSpec extends AkkaSpec(ConfigFactory.defaultReference(ActorSystem.findClassLoader())) with Assertions {
 
   "The default configuration file (i.e. reference.conf)" must {
     "contain all configuration properties for akka-actor that are used in code with their correct defaults" in {
@@ -27,8 +26,8 @@ class ConfigSpec extends AkkaSpec(ConfigFactory.defaultReference(ActorSystem.fin
       {
         import config._
 
-        getString("akka.version") should ===("2.4-SNAPSHOT")
-        settings.ConfigVersion should ===("2.4-SNAPSHOT")
+        getString("akka.version") should ===(ActorSystem.Version)
+        settings.ConfigVersion should ===(ActorSystem.Version)
 
         getBoolean("akka.daemonic") should ===(false)
 
@@ -110,6 +109,7 @@ class ConfigSpec extends AkkaSpec(ConfigFactory.defaultReference(ActorSystem.fin
           getInt("task-queue-size") should ===(-1)
           getString("task-queue-type") should ===("linked")
           getBoolean("allow-core-timeout") should ===(true)
+          getString("fixed-pool-size") should ===("off")
         }
 
         // Debug config

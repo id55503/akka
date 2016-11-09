@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2015 Lightbend Inc. <http://www.lightbend.com>
  */
 
 option java_package = "akka.cluster.pubsub.protobuf.msg";
@@ -11,6 +11,7 @@ message Status {
     required int64 timestamp = 2;
   }
   repeated Version versions = 1;
+  optional bool replyToStatus = 2;
 }
 
 message Delta {
@@ -61,6 +62,13 @@ message SendToAll {
 message Publish {
   required string topic = 1;
   required Payload payload = 3; 
+}
+
+/**
+ * Send a message to only one subscriber of a group.
+ */
+message SendToOneSubscriber {
+  required Payload payload = 1;
 }
 
 message Payload {

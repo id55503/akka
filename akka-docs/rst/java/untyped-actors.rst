@@ -54,7 +54,7 @@ dispatcher to use, see more below). Here are some examples of how to create a
 The second line shows how to pass constructor arguments to the :class:`Actor`
 being created. The presence of a matching constructor is verified during
 construction of the :class:`Props` object, resulting in an
-:class:`IllegalArgumentEception` if no or multiple matching constructors are
+:class:`IllegalArgumentException` if no or multiple matching constructors are
 found.
 
 The third line demonstrates the use of a :class:`Creator<T extends Actor>`. The
@@ -158,14 +158,14 @@ __ Props_
 Techniques for dependency injection and integration with dependency injection frameworks
 are described in more depth in the
 `Using Akka with Dependency Injection <http://letitcrash.com/post/55958814293/akka-dependency-injection>`_
-guideline and the `Akka Java Spring <http://www.typesafe.com/activator/template/akka-java-spring>`_ tutorial
-in Typesafe Activator.
+guideline and the `Akka Java Spring <http://www.lightbend.com/activator/template/akka-java-spring>`_ tutorial
+in Lightbend Activator.
 
 The Inbox
 ---------
 
 When writing code outside of actors which shall communicate with actors, the
-``ask`` pattern can be a solution (see below), but there are two thing it
+``ask`` pattern can be a solution (see below), but there are two things it
 cannot do: receiving multiple replies (e.g. by subscribing an :class:`ActorRef`
 to a notification service) and watching other actors’ lifecycle. For these
 purposes there is the :class:`Inbox` class:
@@ -246,7 +246,15 @@ that point the appropriate lifecycle events are called and watching actors
 are notified of the termination. After the incarnation is stopped, the path can
 be reused again by creating an actor with ``actorOf()``. In this case the
 name of the new incarnation will be the same as the previous one but the
-UIDs will differ.
+UIDs will differ. An actor can be stopped by the actor itself, another actor
+or the ``ActorSystem`` (see :ref:`stopping-actors-java`).
+
+.. note::
+
+   It is important to note that Actors do not stop automatically when no longer
+   referenced, every Actor that is created must also explicitly be destroyed.
+   The only simplification is that stopping a parent Actor will also recursively
+   stop all the child Actors that this parent has created.
 
 An ``ActorRef`` always represents an incarnation (path and UID) not just a
 given path. Therefore if an actor is stopped and a new one with the same
@@ -492,6 +500,8 @@ different one. Outside of an actor and if no reply is needed the second
 argument can be ``null``; if a reply is needed outside of an actor you can use
 the ask-pattern described next..
 
+.. _actors-ask-java:
+
 Ask: Send-And-Receive-Future
 ----------------------------
 
@@ -515,6 +525,10 @@ complete the returned :class:`Future` with a value. The ``ask`` operation
 involves creating an internal actor for handling this reply, which needs to
 have a timeout after which it is destroyed in order not to leak resources; see
 more below.
+
+.. note::
+    A Java 8 variant of the ``ask`` pattern that returns a ``CompletionStage`` instead of a Scala ``Future``
+    is available in the ``akka.pattern.PatternsCS`` object.
 
 .. warning::
 
@@ -601,6 +615,10 @@ periods). Pass in `Duration.Undefined` to switch off this feature.
 
 .. includecode:: code/docs/actor/MyReceiveTimeoutUntypedActor.java#receive-timeout
 
+Messages marked with ``NotInfluenceReceiveTimeout`` will not reset the timer. This can be useful when
+``ReceiveTimeout`` should be fired by external inactivity but not influenced by internal activity,
+e.g. scheduled tick messages.
+
 .. _stopping-actors-java:
 
 Stopping actors
@@ -608,9 +626,11 @@ Stopping actors
 
 Actors are stopped by invoking the :meth:`stop` method of a ``ActorRefFactory``,
 i.e. ``ActorContext`` or ``ActorSystem``. Typically the context is used for stopping
-child actors and the system for stopping top level actors. The actual termination of
-the actor is performed asynchronously, i.e. :meth:`stop` may return before the actor is
-stopped.
+the actor itself or child actors and the system for stopping top level actors. The actual
+termination of the actor is performed asynchronously, i.e. :meth:`stop` may return before
+the actor is stopped.
+
+.. includecode:: code/docs/actor/MyStoppingActor.java#my-stopping-actor
 
 Processing of the current message, if any, will continue before the actor is stopped,
 but additional messages in the mailbox will not be processed. By default these
@@ -732,6 +752,8 @@ in the long run, otherwise this amounts to a memory leak (which is why this
 behavior is not the default).
 
 .. includecode:: code/docs/actor/UntypedActorSwapper.java#swapper
+
+.. _stash-java:
 
 Stash
 =====

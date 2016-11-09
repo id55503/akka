@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.dispatch
@@ -9,8 +9,10 @@ import akka.japi.{ Function ⇒ JFunc, Option ⇒ JOption, Procedure }
 import scala.concurrent.{ Future, Promise, ExecutionContext, ExecutionContextExecutor, ExecutionContextExecutorService }
 import java.lang.{ Iterable ⇒ JIterable }
 import java.util.{ LinkedList ⇒ JLinkedList }
-import java.util.concurrent.{ Executor, ExecutorService, ExecutionException, Callable, TimeoutException }
+import java.util.concurrent.{ Executor, ExecutorService, Callable }
 import scala.util.{ Try, Success, Failure }
+import java.util.concurrent.CompletionStage
+import java.util.concurrent.CompletableFuture
 
 /**
  * ExecutionContexts is the Java API for ExecutionContexts
@@ -88,7 +90,7 @@ object Futures {
    *
    * The result becomes available once the asynchronous computation is completed.
    *
-   * @param body     the asychronous computation
+   * @param body     the asynchronous computation
    * @param executor the execution context on which the future is run
    * @return         the `Future` holding the result of the computation
    */
@@ -110,6 +112,15 @@ object Futures {
    * Creates an already completed Promise with the specified result
    */
   def successful[T](result: T): Future[T] = Future.successful(result)
+
+  /**
+   * Creates an already completed CompletionStage with the specified exception
+   */
+  def failedCompletionStage[T](ex: Throwable): CompletionStage[T] = {
+    val f = CompletableFuture.completedFuture[T](null.asInstanceOf[T])
+    f.obtrudeException(ex)
+    f
+  }
 
   /**
    * Returns a Future that will hold the optional result of the first Future with a result that matches the predicate

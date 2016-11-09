@@ -1,26 +1,18 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
 
-import akka.actor.FSM.StateTimeout
-
 import language.postfixOps
-import org.scalatest.{ BeforeAndAfterAll, BeforeAndAfterEach }
 import akka.testkit._
-import TestEvent.Mute
 import scala.concurrent.duration._
 import akka.event._
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.Await
 import akka.util.Timeout
-import org.scalatest.matchers.Matcher
-import org.scalatest.matchers.HavePropertyMatcher
-import org.scalatest.matchers.HavePropertyMatchResult
 
 object FSMActorSpec {
-  val timeout = Timeout(2 seconds)
 
   class Latches(implicit system: ActorSystem) {
     val unlockedLatch = TestLatch()
@@ -42,6 +34,7 @@ object FSMActorSpec {
   class Lock(code: String, timeout: FiniteDuration, latches: Latches) extends Actor with FSM[LockState, CodeState] {
 
     import latches._
+    import FSM.`→`
 
     startWith(Locked, CodeState("", code))
 
@@ -79,7 +72,7 @@ object FSMActorSpec {
     }
 
     onTransition {
-      case Locked -> Open ⇒ transitionLatch.open
+      case Locked → Open ⇒ transitionLatch.open
     }
 
     // verify that old-style does still compile
@@ -106,9 +99,11 @@ object FSMActorSpec {
   final case class CodeState(soFar: String, code: String)
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
-class FSMActorSpec extends AkkaSpec(Map("akka.actor.debug.fsm" -> true)) with ImplicitSender {
+class FSMActorSpec extends AkkaSpec(Map("akka.actor.debug.fsm" → true)) with ImplicitSender {
   import FSMActorSpec._
+  import FSM.`→`
+
+  val timeout = Timeout(2 seconds)
 
   "An FSM Actor" must {
 
@@ -229,7 +224,7 @@ class FSMActorSpec extends AkkaSpec(Map("akka.actor.debug.fsm" -> true)) with Im
           case Event("stop", _) ⇒ stop()
         }
         onTransition {
-          case "not-started" -> "started" ⇒
+          case "not-started" → "started" ⇒
             for (timerName ← timerNames) setTimer(timerName, (), 10 seconds, false)
         }
         onTermination {
@@ -257,8 +252,8 @@ class FSMActorSpec extends AkkaSpec(Map("akka.actor.debug.fsm" -> true)) with Im
 
     "log events and transitions if asked to do so" in {
       import scala.collection.JavaConverters._
-      val config = ConfigFactory.parseMap(Map("akka.loglevel" -> "DEBUG", "akka.actor.serialize-messages" -> "off",
-        "akka.actor.debug.fsm" -> true).asJava).withFallback(system.settings.config)
+      val config = ConfigFactory.parseMap(Map("akka.loglevel" → "DEBUG", "akka.actor.serialize-messages" → "off",
+        "akka.actor.debug.fsm" → true).asJava).withFallback(system.settings.config)
       val fsmEventSystem = ActorSystem("fsmEvent", config)
       try {
         new TestKit(fsmEventSystem) {

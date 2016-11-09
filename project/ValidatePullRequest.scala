@@ -1,12 +1,15 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka
 
 import com.typesafe.tools.mima.plugin.MimaKeys.reportBinaryIssues
-import net.virtualvoid.sbt.graph.IvyGraphMLDependencies
-import net.virtualvoid.sbt.graph.IvyGraphMLDependencies.ModuleId
+import com.typesafe.tools.mima.plugin.MimaPlugin
+import net.virtualvoid.sbt.graph.backend.SbtUpdateReport
+import net.virtualvoid.sbt.graph.DependencyGraphKeys._
+import net.virtualvoid.sbt.graph.ModuleGraph
 import org.kohsuke.github._
+import sbtunidoc.Plugin.UnidocKeys.unidoc
 import sbt.Keys._
 import sbt._
 
@@ -16,35 +19,32 @@ import scala.util.matching.Regex
 object ValidatePullRequest extends AutoPlugin {
 
   override def trigger = allRequirements
-
   override def requires = plugins.JvmPlugin
 
   sealed trait BuildMode {
-    val Zero = Def.task { () } // when you stare into the void, the void stares back at you
-    def task: Def.Initialize[Task[Unit]]
+    def task: Option[TaskKey[_]]
     def log(projectName: String, l: Logger): Unit
   }
   case object BuildSkip extends BuildMode {
-    override def task = Zero
+    override def task = None
     def log(projectName: String, l: Logger) =
       l.info(s"Skipping validation of [$projectName], as PR does NOT affect this project...")
   }
   case object BuildQuick extends BuildMode {
-    override def task = Zero.dependsOn(test in ValidatePR)
-    def log(projectName: String, l: Logger) = 
+    override def task = Some(test in ValidatePR)
+    def log(projectName: String, l: Logger) =
       l.info(s"Building [$projectName] in quick mode, as it's dependencies were affected by PR.")
   }
   case object BuildProjectChangedQuick extends BuildMode {
-    override def task = Zero.dependsOn(test in ValidatePR)
+    override def task = Some(test in ValidatePR)
     def log(projectName: String, l: Logger) =
       l.info(s"Building [$projectName] as the root `project/` directory was affected by this PR.")
   }
   final case class BuildCommentForcedAll(phrase: String, c: GHIssueComment) extends BuildMode {
-    override def task = Zero.dependsOn(test in Test)
+    override def task = Some(test in Test)
     def log(projectName: String, l: Logger) =
       l.info(s"GitHub PR comment [ ${c.getUrl} ] contains [$phrase], forcing BUILD ALL mode!")
   }
-
 
   val ValidatePR = config("pr-validation") extend Test
 
@@ -61,11 +61,12 @@ object ValidatePullRequest extends AutoPlugin {
 
   val TargetBranchEnvVarName = "PR_TARGET_BRANCH"
   val TargetBranchJenkinsEnvVarName = "ghprbTargetBranch"
-  val targetBranch = settingKey[String]("Branch with which the PR changes should be diffed against")
 
   val SourceBranchEnvVarName = "PR_SOURCE_BRANCH"
   val SourcePullIdJenkinsEnvVarName = "ghprbPullId" // used to obtain branch name in form of "pullreq/17397"
   val sourceBranch = settingKey[String]("Branch containing the changes of this PR")
+
+  val targetBranch = settingKey[String]("Target branch of this PR, defaults to `master`")
 
   // asking github comments if this PR should be PLS BUILD ALL
   val githubEnforcedBuildAll = taskKey[Option[BuildMode]]("Checks via GitHub API if comments included the PLS BUILD ALL keyword")
@@ -73,92 +74,55 @@ object ValidatePullRequest extends AutoPlugin {
 
   // determining touched dirs and projects
   val changedDirectories = taskKey[immutable.Set[String]]("List of touched modules in this PR branch")
-  val projectBuildMode = taskKey[BuildMode]("True if this project is affected by the PR and should be rebuilt")
+  val projectBuildMode = taskKey[BuildMode]("Determines what will run when this project is affected by the PR and should be rebuilt")
 
   // running validation
-  val validatePullRequest = taskKey[Unit]("Additional tasks for pull request validation")
+  val validatePullRequest = taskKey[Unit]("Validate pull request")
+  val additionalTasks = taskKey[Seq[TaskKey[_]]]("Additional tasks for pull request validation")
 
   def changedDirectoryIsDependency(changedDirs: Set[String],
-                                   target: File,
-                                   scalaBinaryVersion: String, version: String,
-                                   organization: String, name: String)(log: Logger): Boolean = {
-    changedDirs.exists { modifiedProject ⇒
-      Set(Compile, Test, Runtime, Provided, Optional) exists { ivyScope: Configuration ⇒
-        log.debug(s"Analysing [$ivyScope] scoped dependencies...")
+                                    name: String,
+                                    graphsToTest: Seq[(Configuration, ModuleGraph)])(log: Logger): Boolean = {
+    val dirsOrExperimental = changedDirs.flatMap(dir => Set(dir, s"$dir-experimental"))
+    graphsToTest exists { case (ivyScope, deps) =>
+      log.debug(s"Analysing [$ivyScope] scoped dependencies...")
 
-        def moduleId(artifactName: String) = ModuleId("com.typesafe.akka", artifactName + "_" + scalaBinaryVersion, version)
-        val modifiedModuleIds = Set(moduleId(modifiedProject), moduleId(modifiedProject + "-experimental"))
+      deps.nodes.foreach { m ⇒ log.debug(" -> " + m.id) }
 
-        def resolutionFilename(includeScalaVersion: Boolean) =
-          s"%s-%s-%s.xml".format(
-            organization,
-            name + (if (includeScalaVersion) "_" + scalaBinaryVersion else ""),
-            ivyScope.toString())
-        def resolutionFile(includeScalaVersion: Boolean) =
-          target / "resolution-cache" / "reports" / resolutionFilename(includeScalaVersion)
-
-        val ivyReportFile = {
-          val f1 = resolutionFile(includeScalaVersion = true)
-          val f2 = resolutionFile(includeScalaVersion = false)
-          if (f1.exists()) f1 else f2
-        }
-
-        val deps = IvyGraphMLDependencies.graph(ivyReportFile.getAbsolutePath)
-        deps.nodes.foreach { m ⇒ log.debug(" -> " + m.id) }
-
-        // if this project depends on a modified module, we must test it
-        deps.nodes.exists { m =>
-          val depends = modifiedModuleIds exists {
-            _.name == m.id.name
-          } // match just by name, we'd rather include too much than too little
-          if (depends) log.info(s"Project [$name] must be verified, because depends on [${modifiedModuleIds.find(_ == m.id).get}]")
-          depends
-        }
+      // if this project depends on a modified module, we must test it
+      deps.nodes.exists { m =>
+        // match just by name, we'd rather include too much than too little
+        val dependsOnModule = dirsOrExperimental.find(m.id.name contains _)
+        val depends = dependsOnModule.isDefined
+        if (depends) log.info(s"Project [$name] must be verified, because depends on [${dependsOnModule.get}]")
+        depends
       }
     }
   }
 
+  def localTargetBranch: Option[String] = sys.env.get("PR_TARGET_BRANCH")
+  def jenkinsTargetBranch: Option[String] = sys.env.get("ghprbTargetBranch")
+  def runningOnJenkins: Boolean = jenkinsTargetBranch.isDefined
+  def runningLocally: Boolean = !runningOnJenkins
 
-  override lazy val projectSettings = inConfig(ValidatePR)(Defaults.testTasks) ++ Seq(
-    testOptions in ValidatePR += Tests.Argument(TestFrameworks.ScalaTest, "-l", "performance"),
-    testOptions in ValidatePR += Tests.Argument(TestFrameworks.ScalaTest, "-l", "long-running"),
-    testOptions in ValidatePR += Tests.Argument(TestFrameworks.ScalaTest, "-l", "timing"),
-
-    targetBranch in ValidatePR := {
-        sys.env.get(TargetBranchEnvVarName) orElse
-        sys.env.get(TargetBranchJenkinsEnvVarName) getOrElse // Set by "GitHub pull request builder plugin"
-        "master"
-    },
-
-    sourceBranch in ValidatePR := {
+  override lazy val buildSettings = Seq(
+    sourceBranch in Global in ValidatePR := {
       sys.env.get(SourceBranchEnvVarName) orElse
-      sys.env.get(SourcePullIdJenkinsEnvVarName).map("pullreq/" + _) getOrElse // Set by "GitHub pull request builder plugin"
-      "HEAD"
+        sys.env.get(SourcePullIdJenkinsEnvVarName).map("pullreq/" + _) getOrElse // Set by "GitHub pull request builder plugin"
+        "HEAD"
     },
 
-    changedDirectories in ValidatePR := {
-      val log = streams.value.log
-
-      val targetId = (targetBranch in ValidatePR).value
-      val prId = (sourceBranch in ValidatePR).value
-
-      // TODO could use jgit
-      log.info(s"Comparing [$targetId] with [$prId] to determine changed modules in PR...")
-      val gitOutput = "git diff %s..%s --name-only".format(targetId, prId).!!.split("\n")
-
-      val moduleNames =
-        gitOutput
-          .map(l ⇒ l.trim.takeWhile(_ != '/'))
-          .filter(dir => dir.startsWith("akka-") || dir == "project")
-          .toSet
-
-      log.info("Detected changes in directories: " + moduleNames.mkString("[", ", ", "]"))
-      moduleNames
+    targetBranch in Global in ValidatePR := {
+      (localTargetBranch, jenkinsTargetBranch) match {
+        case (Some(local), _)     => local // local override
+        case (None, Some(branch)) => s"origin/$branch" // usually would be "master" or "release-2.3" etc
+        case (None, None)         => "origin/master" // defaulting to diffing with "master"
+      }
     },
 
-    buildAllKeyword in ValidatePR := """PLS BUILD ALL""".r,
+    buildAllKeyword in Global in ValidatePR := """PLS BUILD ALL""".r,
 
-    githubEnforcedBuildAll in ValidatePR := {
+    githubEnforcedBuildAll in Global in ValidatePR := {
       sys.env.get(PullIdEnvVarName).map(_.toInt) flatMap { prId =>
         val log = streams.value.log
         val buildAllMagicPhrase = (buildAllKeyword in ValidatePR).value
@@ -181,32 +145,149 @@ object ValidatePullRequest extends AutoPlugin {
       }
     },
 
+    changedDirectories in Global in ValidatePR := {
+      val log = streams.value.log
+
+      val prId = (sourceBranch in ValidatePR).value
+
+      val target = (targetBranch in ValidatePR).value
+
+      // TODO could use jgit
+      log.info(s"Diffing [$prId] to determine changed modules in PR...")
+      val diffOutput = s"git diff $target --name-only".!!.split("\n")
+      val diffedModuleNames =
+        diffOutput
+          .map(l => l.trim)
+          .filter(l =>
+            l.startsWith("akka-") ||
+            (l.startsWith("project") && l != "project/MiMa.scala")
+          )
+          .map(l ⇒ l.takeWhile(_ != '/'))
+          .toSet
+
+      val dirtyModuleNames: Set[String] =
+        if (runningOnJenkins) Set.empty
+        else {
+          val statusOutput = s"git status --short".!!.split("\n")
+          val dirtyDirectories = statusOutput
+            .map(l ⇒ l.trim.dropWhile(_ != ' ').drop(1))
+            .map(_.takeWhile(_ != '/'))
+            .filter(dir => dir.startsWith("akka-") || dir == "project")
+            .toSet
+          log.info("Detected uncomitted changes in directories (including in dependency analysis): " + dirtyDirectories.mkString("[", ",", "]"))
+          dirtyDirectories
+        }
+
+
+      val allModuleNames = dirtyModuleNames ++ diffedModuleNames
+      log.info("Detected changes in directories: " + allModuleNames.mkString("[", ", ", "]"))
+      allModuleNames
+    }
+  )
+
+  override lazy val projectSettings = inConfig(ValidatePR)(Defaults.testTasks) ++ Seq(
+    testOptions in ValidatePR += Tests.Argument(TestFrameworks.ScalaTest, "-l", "performance"),
+    testOptions in ValidatePR += Tests.Argument(TestFrameworks.ScalaTest, "-l", "long-running"),
+    testOptions in ValidatePR += Tests.Argument(TestFrameworks.ScalaTest, "-l", "timing"),
+
     projectBuildMode in ValidatePR := {
       val log = streams.value.log
       log.debug(s"Analysing project (for inclusion in PR validation): [${name.value}]")
       val changedDirs = (changedDirectories in ValidatePR).value
       val githubCommandEnforcedBuildAll = (githubEnforcedBuildAll in ValidatePR).value
 
+      val thisProjectId = CrossVersion(scalaVersion.value, scalaBinaryVersion.value)(projectID.value)
+
+      def graphFor(updateReport: UpdateReport, config: Configuration): (Configuration, ModuleGraph) =
+        config -> SbtUpdateReport.fromConfigurationReport(updateReport.configuration(config.name).get, thisProjectId)
+
+      def isDependency: Boolean =
+        changedDirectoryIsDependency(
+          changedDirs,
+          name.value,
+          Seq(
+            graphFor((update in Compile).value, Compile),
+            graphFor((update in Test).value, Test),
+            graphFor((update in Runtime).value, Runtime),
+            graphFor((update in Provided).value, Provided),
+            graphFor((update in Optional).value, Optional)))(log)
+
       if (githubCommandEnforcedBuildAll.isDefined)
         githubCommandEnforcedBuildAll.get
       else if (changedDirs contains "project")
         BuildProjectChangedQuick
-      else if (changedDirectoryIsDependency(changedDirs, target.value, scalaBinaryVersion.value, version.value,
-                                            organization.value, name.value)(log))
+      else if (isDependency)
         BuildQuick
       else
         BuildSkip
     },
+
+    additionalTasks in ValidatePR := Seq.empty,
 
     validatePullRequest := Def.taskDyn {
       val log = streams.value.log
       val buildMode = (projectBuildMode in ValidatePR).value
 
       buildMode.log(name.value, log)
-      buildMode.task
-    }.value,
 
-    // add reportBinaryIssues to validatePullRequest on minor version maintenance branch
-    validatePullRequest <<= validatePullRequest.dependsOn(reportBinaryIssues)
+      val validationTasks = buildMode.task.toSeq ++ (buildMode match {
+        case BuildSkip => Seq.empty // do not run the additional task if project is skipped during pr validation
+        case _ => (additionalTasks in ValidatePR).value
+      })
+
+      // Create a task for every validation task key and
+      // then zip all of the tasks together discarding outputs.
+      // Task failures are propagated as normal.
+      val zero: Def.Initialize[Seq[Task[Any]]] = Def.setting { Seq(task())}
+      validationTasks.map(taskKey => Def.task { taskKey.value } ).foldLeft(zero) { (acc, current) =>
+        acc.zipWith(current) { case (taskSeq, task) =>
+          taskSeq :+ task.asInstanceOf[Task[Any]]
+        }
+      } apply { tasks: Seq[Task[Any]] =>
+        tasks.join map { seq => () /* Ignore the sequence of unit returned */ }
+      }
+    }.value
+  )
+}
+
+/**
+ * This autoplugin adds Multi Jvm tests to validatePullRequest task.
+ * It is needed, because ValidatePullRequest autoplugin does not depend on MultiNode and
+ * therefore test:executeTests is not yet modified to include multi-jvm tests when ValidatePullRequest
+ * build strategy is being determined.
+ *
+ * Making ValidatePullRequest depend on MultiNode is impossible, as then ValidatePullRequest
+ * autoplugin would trigger only on projects which have both of these plugins enabled.
+ */
+object MultiNodeWithPrValidation extends AutoPlugin {
+  import ValidatePullRequest._
+
+  override def trigger = allRequirements
+  override def requires = ValidatePullRequest && MultiNode
+  override lazy val projectSettings = Seq(
+    additionalTasks in ValidatePR += MultiNode.multiTest
+  )
+}
+
+/**
+ * This autoplugin adds MiMa binary issue reporting to validatePullRequest task,
+ * when a project has MimaPlugin autoplugin enabled.
+ */
+object MimaWithPrValidation extends AutoPlugin {
+  import ValidatePullRequest._
+
+  override def trigger = allRequirements
+  override def requires = ValidatePullRequest && MimaPlugin
+  override lazy val projectSettings = Seq(
+    additionalTasks in ValidatePR += reportBinaryIssues
+  )
+}
+
+object UnidocWithPrValidation extends AutoPlugin {
+  import ValidatePullRequest._
+
+  override def trigger = noTrigger
+  override lazy val projectSettings = Seq(
+    additionalTasks in ValidatePR += unidoc in Compile
   )
 }

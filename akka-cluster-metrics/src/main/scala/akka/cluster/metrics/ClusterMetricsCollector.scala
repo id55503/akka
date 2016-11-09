@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.metrics
 
@@ -13,8 +13,8 @@ import akka.cluster.Member
 import akka.cluster.Cluster
 import scala.collection.immutable
 import akka.cluster.MemberStatus
-import scala.concurrent.forkjoin.ThreadLocalRandom
-import akka.actor.Terminated
+import java.util.concurrent.ThreadLocalRandom
+import akka.actor.DeadLetterSuppression
 
 /**
  *  Runtime collection management commands.
@@ -45,7 +45,6 @@ case object CollectionStopMessage extends CollectionControlMessage {
  * Actor providing customizable metrics collection supervision.
  */
 private[metrics] class ClusterMetricsSupervisor extends Actor with ActorLogging {
-  import ClusterMetricsExtension._
   val metrics = ClusterMetricsExtension(context.system)
   import metrics.settings._
   import context._
@@ -109,6 +108,7 @@ private[metrics] trait ClusterMetricsMessage extends Serializable
  */
 @SerialVersionUID(1L)
 private[metrics] final case class MetricsGossipEnvelope(from: Address, gossip: MetricsGossip, reply: Boolean) extends ClusterMetricsMessage
+  with DeadLetterSuppression
 
 /**
  * INTERNAL API.
@@ -120,6 +120,7 @@ private[metrics] class ClusterMetricsCollector extends Actor with ActorLogging {
   // TODO collapse to ClusterEvent._ after akka-cluster metrics is gone
   import ClusterEvent.MemberEvent
   import ClusterEvent.MemberUp
+  import ClusterEvent.MemberWeaklyUp
   import ClusterEvent.MemberRemoved
   import ClusterEvent.MemberExited
   import ClusterEvent.ReachabilityEvent
@@ -129,7 +130,7 @@ private[metrics] class ClusterMetricsCollector extends Actor with ActorLogging {
   import Member.addressOrdering
   import context.dispatcher
   val cluster = Cluster(context.system)
-  import cluster.{ selfAddress, scheduler, settings }
+  import cluster.{ selfAddress, scheduler }
   import cluster.InfoLogger._
   val metrics = ClusterMetricsExtension(context.system)
   import metrics.settings._
@@ -152,13 +153,15 @@ private[metrics] class ClusterMetricsCollector extends Actor with ActorLogging {
   /**
    * Start periodic gossip to random nodes in cluster
    */
-  val gossipTask = scheduler.schedule(PeriodicTasksInitialDelay max CollectorGossipInterval,
+  val gossipTask = scheduler.schedule(
+    PeriodicTasksInitialDelay max CollectorGossipInterval,
     CollectorGossipInterval, self, GossipTick)
 
   /**
    * Start periodic metrics collection
    */
-  val sampleTask = scheduler.schedule(PeriodicTasksInitialDelay max CollectorSampleInterval,
+  val sampleTask = scheduler.schedule(
+    PeriodicTasksInitialDelay max CollectorSampleInterval,
     CollectorSampleInterval, self, MetricsTick)
 
   override def preStart(): Unit = {
@@ -172,11 +175,14 @@ private[metrics] class ClusterMetricsCollector extends Actor with ActorLogging {
     case msg: MetricsGossipEnvelope ⇒ receiveGossip(msg)
     case state: CurrentClusterState ⇒ receiveState(state)
     case MemberUp(m)                ⇒ addMember(m)
+    case MemberWeaklyUp(m)          ⇒ addMember(m)
     case MemberRemoved(m, _)        ⇒ removeMember(m)
     case MemberExited(m)            ⇒ removeMember(m)
     case UnreachableMember(m)       ⇒ removeMember(m)
-    case ReachableMember(m)         ⇒ if (m.status == MemberStatus.Up) addMember(m)
-    case _: MemberEvent             ⇒ // not interested in other types of MemberEvent
+    case ReachableMember(m) ⇒
+      if (m.status == MemberStatus.Up || m.status == MemberStatus.WeaklyUp)
+        addMember(m)
+    case _: MemberEvent ⇒ // not interested in other types of MemberEvent
 
   }
 
@@ -205,7 +211,9 @@ private[metrics] class ClusterMetricsCollector extends Actor with ActorLogging {
    * Updates the initial node ring for those nodes that are [[akka.cluster.MemberStatus]] `Up`.
    */
   def receiveState(state: CurrentClusterState): Unit =
-    nodes = (state.members -- state.unreachable) collect { case m if m.status == MemberStatus.Up ⇒ m.address }
+    nodes = (state.members diff state.unreachable) collect {
+      case m if m.status == MemberStatus.Up || m.status == MemberStatus.WeaklyUp ⇒ m.address
+    }
 
   /**
    * Samples the latest metrics for the node, updates metrics statistics in

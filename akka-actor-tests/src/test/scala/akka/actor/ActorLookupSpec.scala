@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -34,7 +34,6 @@ object ActorLookupSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ActorLookupSpec extends AkkaSpec with DefaultTimeout {
   import ActorLookupSpec._
 
@@ -250,14 +249,14 @@ class ActorLookupSpec extends AkkaSpec with DefaultTimeout {
         val lookname = looker.path.elements.mkString("", "/", "/")
         for (
           (l, r) ← Seq(
-            LookupString("a/b/c") -> empty(lookname + "a/b/c"),
-            LookupString("") -> system.deadLetters,
-            LookupString("akka://all-systems/Nobody") -> system.deadLetters,
-            LookupPath(system / "hallo") -> empty("user/hallo"),
-            LookupPath(looker.path child "hallo") -> empty(lookname + "hallo"), // test Java API
-            LookupPath(looker.path descendant Seq("a", "b").asJava) -> empty(lookname + "a/b"), // test Java API
-            LookupElems(Seq()) -> system.deadLetters,
-            LookupElems(Seq("a")) -> empty(lookname + "a"))
+            LookupString("a/b/c") → empty(lookname + "a/b/c"),
+            LookupString("") → system.deadLetters,
+            LookupString("akka://all-systems/Nobody") → system.deadLetters,
+            LookupPath(system / "hallo") → empty("user/hallo"),
+            LookupPath(looker.path child "hallo") → empty(lookname + "hallo"), // test Java API
+            LookupPath(looker.path descendant Seq("a", "b").asJava) → empty(lookname + "a/b"), // test Java API
+            LookupElems(Seq()) → system.deadLetters,
+            LookupElems(Seq("a")) → empty(lookname + "a"))
         ) checkOne(looker, l, r)
       }
       for (looker ← all) check(looker)

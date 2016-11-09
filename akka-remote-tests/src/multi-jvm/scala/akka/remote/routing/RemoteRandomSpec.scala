@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.routing
 
@@ -9,26 +9,25 @@ import akka.actor.ActorRef
 import akka.actor.Address
 import akka.actor.PoisonPill
 import akka.actor.Props
-import akka.remote.testkit.{ STMultiNodeSpec, MultiNodeConfig, MultiNodeSpec }
+import akka.remote.RemotingMultiNodeSpec
+import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec, STMultiNodeSpec }
 import akka.routing.Broadcast
 import akka.routing.RandomPool
 import akka.routing.RoutedActorRef
 import akka.testkit._
+import com.typesafe.config.ConfigFactory
 
-object RemoteRandomMultiJvmSpec extends MultiNodeConfig {
-
-  class SomeActor extends Actor {
-    def receive = {
-      case "hit" ⇒ sender() ! self
-    }
-  }
+class RemoteRandomConfig(artery: Boolean) extends MultiNodeConfig {
 
   val first = role("first")
   val second = role("second")
   val third = role("third")
   val fourth = role("fourth")
 
-  commonConfig(debugConfig(on = false))
+  commonConfig(debugConfig(on = false).withFallback(
+    ConfigFactory.parseString(s"""
+      akka.remote.artery.enabled = $artery
+      """)).withFallback(RemotingMultiNodeSpec.arteryFlightRecordingConf))
 
   deployOnAll("""
       /service-hello {
@@ -39,14 +38,28 @@ object RemoteRandomMultiJvmSpec extends MultiNodeConfig {
     """)
 }
 
-class RemoteRandomMultiJvmNode1 extends RemoteRandomSpec
-class RemoteRandomMultiJvmNode2 extends RemoteRandomSpec
-class RemoteRandomMultiJvmNode3 extends RemoteRandomSpec
-class RemoteRandomMultiJvmNode4 extends RemoteRandomSpec
+class RemoteRandomMultiJvmNode1 extends RemoteRandomSpec(new RemoteRandomConfig(artery = false))
+class RemoteRandomMultiJvmNode2 extends RemoteRandomSpec(new RemoteRandomConfig(artery = false))
+class RemoteRandomMultiJvmNode3 extends RemoteRandomSpec(new RemoteRandomConfig(artery = false))
+class RemoteRandomMultiJvmNode4 extends RemoteRandomSpec(new RemoteRandomConfig(artery = false))
 
-class RemoteRandomSpec extends MultiNodeSpec(RemoteRandomMultiJvmSpec)
-  with STMultiNodeSpec with ImplicitSender with DefaultTimeout {
-  import RemoteRandomMultiJvmSpec._
+class ArteryRemoteRandomMultiJvmNode1 extends RemoteRandomSpec(new RemoteRandomConfig(artery = true))
+class ArteryRemoteRandomMultiJvmNode2 extends RemoteRandomSpec(new RemoteRandomConfig(artery = true))
+class ArteryRemoteRandomMultiJvmNode3 extends RemoteRandomSpec(new RemoteRandomConfig(artery = true))
+class ArteryRemoteRandomMultiJvmNode4 extends RemoteRandomSpec(new RemoteRandomConfig(artery = true))
+
+object RemoteRandomSpec {
+  class SomeActor extends Actor {
+    def receive = {
+      case "hit" ⇒ sender() ! self
+    }
+  }
+}
+
+class RemoteRandomSpec(multiNodeConfig: RemoteRandomConfig) extends RemotingMultiNodeSpec(multiNodeConfig)
+  with DefaultTimeout {
+  import multiNodeConfig._
+  import RemoteRandomSpec._
 
   def initialParticipants = roles.size
 
@@ -71,8 +84,8 @@ class RemoteRandomSpec extends MultiNodeSpec(RemoteRandomMultiJvmSpec)
 
         val replies: Map[Address, Int] = (receiveWhile(5.seconds, messages = connectionCount * iterationCount) {
           case ref: ActorRef ⇒ ref.path.address
-        }).foldLeft(Map(node(first).address -> 0, node(second).address -> 0, node(third).address -> 0)) {
-          case (replyMap, address) ⇒ replyMap + (address -> (replyMap(address) + 1))
+        }).foldLeft(Map(node(first).address → 0, node(second).address → 0, node(third).address → 0)) {
+          case (replyMap, address) ⇒ replyMap + (address → (replyMap(address) + 1))
         }
 
         enterBarrier("broadcast-end")

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.dispatch.sysmsg
 
@@ -261,6 +261,6 @@ private[akka] final case class Failed(child: ActorRef, cause: Throwable, uid: In
 
 @SerialVersionUID(1L)
 private[akka] final case class DeathWatchNotification(
-  actor: ActorRef,
+  actor:              ActorRef,
   existenceConfirmed: Boolean,
-  addressTerminated: Boolean) extends SystemMessage with DeadLetterSuppression
+  addressTerminated:  Boolean) extends SystemMessage with DeadLetterSuppression

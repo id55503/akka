@@ -54,6 +54,17 @@ obtaining a reference to the underlying actor instance, or by invoking or
 querying the actor's behaviour (:meth:`receive`). Each one warrants its own
 section below.
 
+.. note::
+  It is highly recommended to stick to traditional behavioural testing (using messaging
+  to ask the Actor to reply with the state you want to run assertions against),
+  instead of using ``TestActorRef`` whenever possible.
+
+.. warning::
+  Due to the synchronous nature of ``TestActorRef`` it will **not** work with some support
+  traits that Akka provides as they require asynchronous behaviours to function properly.
+  Examples of traits that do not mix well with test actor refs are :ref:`PersistentActor <event-sourcing-scala>`
+  and :ref:`AtLeastOnceDelivery <at-least-once-delivery-scala>` provided by :ref:`Akka Persistence <persistence-scala>`.
+
 Obtaining a Reference to an :class:`Actor`
 ------------------------------------------
 
@@ -149,6 +160,8 @@ suits your test needs:
 Feel free to experiment with the possibilities, and if you find useful
 patterns, don't hesitate to let the Akka forums know about them! Who knows,
 common operations might even be worked into nice DSLs.
+
+.. _async-integration-testing-scala:
 
 Asynchronous Integration Testing with :class:`TestKit`
 ======================================================
@@ -411,7 +424,7 @@ Resolving Conflicts with Implicit ActorRef
 ------------------------------------------
 
 If you want the sender of messages inside your TestKit-based tests to be the ``testActor``
-simply mix in ``ÌmplicitSender`` into your test.
+simply mix in ``ImplicitSender`` into your test.
 
 .. includecode:: code/docs/testkit/PlainWordSpec.scala#implicit-sender
 
@@ -535,25 +548,50 @@ Testing parent-child relationships
 ----------------------------------
 
 The parent of an actor is always the actor that created it. At times this leads to
-a coupling between the two that may not be straightforward to test. 
-Broadly, there are three approaches to improve testability of parent-child 
-relationships: 
+a coupling between the two that may not be straightforward to test.
+There are several approaches to improve testability of a child actor that
+needs to refer to its parent:
 
-1. when creating a child, pass an explicit reference to its parent 
-2. when creating a parent, tell the parent how to create its child
+1. when creating a child, pass an explicit reference to its parent
+2. create the child with a ``TestProbe`` as parent
 3. create a fabricated parent when testing
+
+Conversely, a parent's binding to its child can be lessened as follows:
+
+4. when creating a parent, tell the parent how to create its child
 
 For example, the structure of the code you want to test may follow this pattern: 
 
 .. includecode:: code/docs/testkit/ParentChildSpec.scala#test-example
 
-Using dependency-injection
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Introduce child to its parent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The first option is to avoid use of the :meth:`context.parent` function and create 
 a child with a custom parent by passing an explicit reference to its parent instead.
 
 .. includecode:: code/docs/testkit/ParentChildSpec.scala#test-dependentchild
+
+Create the child using TestProbe
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``TestProbe`` class can in fact create actors that will run with the test probe as parent.
+This will cause any messages the the child actor sends to `context.parent` to
+end up in the test probe.
+
+.. includecode:: code/docs/testkit/ParentChildSpec.scala#test-TestProbe-parent
+
+Using a fabricated parent
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you prefer to avoid modifying the parent or child constructor you can 
+create a fabricated parent in your test. This, however, does not enable you to test
+the parent actor in isolation.
+
+.. includecode:: code/docs/testkit/ParentChildSpec.scala#test-fabricated-parent
+
+Externalize child making from the parent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Alternatively, you can tell the parent how to create its child. There are two ways 
 to do this: by giving it a :class:`Props` object or by giving it a function which takes care of creating the child actor:
@@ -568,14 +606,6 @@ And like this in your application code:
 
 .. includecode:: code/docs/testkit/ParentChildSpec.scala#child-maker-prod
 
-Using a fabricated parent
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you prefer to avoid modifying the parent or child constructor you can 
-create a fabricated parent in your test. This, however, does not enable you to test
-the parent actor in isolation.
-
-.. includecode:: code/docs/testkit/ParentChildSpec.scala#test-fabricated-parent
 
 Which of these methods is the best depends on what is most important to test. The
 most generic option is to create the parent actor by passing it a function that is
@@ -735,14 +765,13 @@ options:
 
 .. includecode:: code/docs/testkit/TestkitDocSpec.scala#logging-receive
 
-.
-  If the abovementioned setting is not given in the :ref:`configuration`, this method will
-  pass through the given :class:`Receive` function unmodified, meaning that
-  there is no runtime cost unless actually enabled.
+If the aforementioned setting is not given in the :ref:`configuration`, this method will
+pass through the given :class:`Receive` function unmodified, meaning that
+there is no runtime cost unless actually enabled.
 
-  The logging feature is coupled to this specific local mark-up because
-  enabling it uniformly on all actors is not usually what you need, and it
-  would lead to endless loops if it were applied to event bus logger listeners.
+The logging feature is coupled to this specific local mark-up because
+enabling it uniformly on all actors is not usually what you need, and it
+would lead to endless loops if it were applied to event bus logger listeners.
 
 * *Logging of special messages*
 
@@ -815,11 +844,11 @@ Some `Specs2 <http://specs2.org>`_ users have contributed examples of how to wor
   with :class:`org.specs2.specification.Scope`.
 * The Specification traits provide a :class:`Duration` DSL which uses partly
   the same method names as :class:`scala.concurrent.duration.Duration`, resulting in ambiguous
-  implicits if ``scala.concurrent.duration._`` is imported. There are two work-arounds:
+  implicits if ``scala.concurrent.duration._`` is imported. There are two workarounds:
 
   * either use the Specification variant of Duration and supply an implicit
     conversion to the Akka Duration. This conversion is not supplied with the
-    Akka distribution because that would mean that our JAR files would dependon
+    Akka distribution because that would mean that our JAR files would depend on
     Specs2, which is not justified by this little feature.
 
   * or mix :class:`org.specs2.time.NoTimeConversions` into the Specification.

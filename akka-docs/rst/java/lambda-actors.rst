@@ -54,6 +54,12 @@ Here is an example:
 .. includecode:: code/docs/actorlambda/MyActor.java
    :include: imports,my-actor
 
+In case you want to provide many :meth:`match` cases but want to avoid creating a long call
+trail, you can split the creation of the builder into multiple statements as in the example:
+
+.. includecode:: code/docs/actorlambda/GraduallyBuiltActor.java
+   :include: imports,actor
+
 Please note that the Akka Actor ``receive`` message loop is exhaustive, which
 is different compared to Erlang and the late Scala Actors. This means that you
 need to provide a pattern match for all messages that it can accept and if you
@@ -90,7 +96,7 @@ explained below.
 The last line shows a possibility to pass constructor arguments regardless of
 the context it is being used in. The presence of a matching constructor is
 verified during construction of the :class:`Props` object, resulting in an
-:class:`IllegalArgumentEception` if no or multiple matching constructors are
+:class:`IllegalArgumentException` if no or multiple matching constructors are
 found.
 
 Dangerous Variants
@@ -204,14 +210,14 @@ __ Props_
 Techniques for dependency injection and integration with dependency injection frameworks
 are described in more depth in the
 `Using Akka with Dependency Injection <http://letitcrash.com/post/55958814293/akka-dependency-injection>`_
-guideline and the `Akka Java Spring <http://www.typesafe.com/activator/template/akka-java-spring>`_ tutorial
-in Typesafe Activator.
+guideline and the `Akka Java Spring <http://www.lightbend.com/activator/template/akka-java-spring>`_ tutorial
+in Lightbend Activator.
 
 The Inbox
 ---------
 
 When writing code outside of actors which shall communicate with actors, the
-``ask`` pattern can be a solution (see below), but there are two thing it
+``ask`` pattern can be a solution (see below), but there are two things it
 cannot do: receiving multiple replies (e.g. by subscribing an :class:`ActorRef`
 to a notification service) and watching other actors’ lifecycle. For these
 purposes there is the :class:`Inbox` class:
@@ -292,6 +298,13 @@ are notified of the termination. After the incarnation is stopped, the path can
 be reused again by creating an actor with ``actorOf()``. In this case the
 name of the new incarnation will be the same as the previous one but the
 UIDs will differ.
+
+.. note::
+
+   It is important to note that Actors do not stop automatically when no longer
+   referenced, every Actor that is created must also explicitly be destroyed.
+   The only simplification is that stopping a parent Actor will also recursively
+   stop all the child Actors that this parent has created.
 
 An ``ActorRef`` always represents an incarnation (path and UID) not just a
 given path. Therefore if an actor is stopped and a new one with the same
@@ -473,9 +486,10 @@ of that reply is guaranteed, it still is a normal message.
 .. includecode:: code/docs/actorlambda/ActorDocTest.java#identify
 
 You can also acquire an :class:`ActorRef` for an :class:`ActorSelection` with
-the ``resolveOne`` method of the :class:`ActorSelection`. It returns a ``Future``
-of the matching :class:`ActorRef` if such an actor exists. It is completed with
-failure [[akka.actor.ActorNotFound]] if no such actor exists or the identification
+the ``resolveOne`` method of the :class:`ActorSelection`. It returns a
+``Future`` of the matching :class:`ActorRef` if such an actor exists (see also
+:ref:`actor-java-lambda` for Java compatibility). It is completed with failure
+[[akka.actor.ActorNotFound]] if no such actor exists or the identification
 didn't complete within the supplied `timeout`.
 
 Remote actor addresses may also be looked up, if :ref:`remoting <remoting-java>` is enabled:
@@ -536,6 +550,8 @@ actor—e.g. the parent—in which the second argument to :meth:`tell` would be 
 different one. Outside of an actor and if no reply is needed the second
 argument can be ``null``; if a reply is needed outside of an actor you can use
 the ask-pattern described next..
+
+.. _actors-ask-lambda:
 
 Ask: Send-And-Receive-Future
 ----------------------------
@@ -658,6 +674,10 @@ periods). Pass in `Duration.Undefined` to switch off this feature.
 
 .. includecode:: code/docs/actorlambda/ActorDocTest.java#receive-timeout
 
+Messages marked with ``NotInfluenceReceiveTimeout`` will not reset the timer. This can be useful when
+``ReceiveTimeout`` should be fired by external inactivity but not influenced by internal activity,
+e.g. scheduled tick messages.
+
 .. _stopping-actors-lambda:
 
 Stopping actors
@@ -772,7 +792,7 @@ Hakkers`_). It will replace the current behavior (i.e. the top of the behavior
 stack), which means that you do not use :meth:`unbecome`, instead always the
 next behavior is explicitly installed.
 
-.. _Dining Hakkers: http://www.typesafe.com/activator/template/akka-sample-fsm-java-lambda
+.. _Dining Hakkers: http://www.lightbend.com/activator/template/akka-sample-fsm-java-lambda
 
 The other way of using :meth:`become` does not replace but add to the top of
 the behavior stack. In this case care must be taken to ensure that the number
@@ -782,6 +802,7 @@ behavior is not the default).
 
 .. includecode:: code/docs/actorlambda/ActorDocTest.java#swapper
 
+.. _stash-lambda:
 
 Stash
 =====

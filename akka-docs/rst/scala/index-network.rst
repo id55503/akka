@@ -11,7 +11,9 @@ Networking
    cluster-client
    cluster-sharding
    cluster-metrics
+   distributed-data
    remoting
+   remoting-artery
    serialization
    io
    io-tcp

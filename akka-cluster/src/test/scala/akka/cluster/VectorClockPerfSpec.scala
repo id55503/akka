@@ -1,10 +1,9 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
 
-import akka.testkit.AkkaSpec
 import scala.collection.immutable.{ TreeMap, SortedSet }
 import org.scalatest.WordSpec
 import org.scalatest.Matchers
@@ -28,7 +27,6 @@ object VectorClockPerfSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class VectorClockPerfSpec extends WordSpec with Matchers {
   import VectorClock._
   import VectorClockPerfSpec._

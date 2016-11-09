@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -9,12 +9,9 @@ import akka.testkit._
 import akka.testkit.DefaultTimeout
 import akka.testkit.TestEvent._
 import akka.dispatch.BoundedDequeBasedMailbox
-import akka.pattern.ask
-import scala.concurrent.Await
 import scala.concurrent.duration._
 import akka.actor.ActorSystem.Settings
 import com.typesafe.config.{ Config, ConfigFactory }
-import org.scalatest.Assertions.intercept
 import org.scalatest.BeforeAndAfterEach
 
 object ActorWithBoundedStashSpec {
@@ -84,7 +81,6 @@ object ActorWithBoundedStashSpec {
     """)
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ActorWithBoundedStashSpec extends AkkaSpec(ActorWithBoundedStashSpec.testConf) with BeforeAndAfterEach with DefaultTimeout with ImplicitSender {
   import ActorWithBoundedStashSpec._
 

@@ -110,7 +110,8 @@ Builtin Mailbox Implementations
 
 Akka comes shipped with a number of mailbox implementations:
 
-* UnboundedMailbox
+* **UnboundedMailbox** (default)
+
   - The default mailbox
 
   - Backed by a ``java.util.concurrent.ConcurrentLinkedQueue``
@@ -119,87 +120,31 @@ Akka comes shipped with a number of mailbox implementations:
 
   - Bounded: No
 
-  - Configuration name: "unbounded" or "akka.dispatch.UnboundedMailbox"
+  - Configuration name: ``"unbounded"`` or ``"akka.dispatch.UnboundedMailbox"``
 
-* SingleConsumerOnlyUnboundedMailbox
+* **SingleConsumerOnlyUnboundedMailbox**
 
-  - Backed by a very efficient Multiple Producer Single Consumer queue, cannot be used with BalancingDispatcher
+  This queue may or may not be faster than the default one depending on your use-case—be sure to benchmark properly!
 
-  - Blocking: No
-
-  - Bounded: No
-
-  - Configuration name: "akka.dispatch.SingleConsumerOnlyUnboundedMailbox"
-
-* NonBlockingBoundedMailbox
-
-  - Backed by a very efficient MultiPle-Producer Multiple-Consumer queue
+  - Backed by a Multiple-Producer Single-Consumer queue, cannot be used with ``BalancingDispatcher``
 
   - Blocking: No
 
-  - Bounded: Yes
-
-  - Configuration name: "akka.dispatch.NonBlockingBoundedMailbox"
-
-* BoundedMailbox
-
-  - Backed by a ``java.util.concurrent.LinkedBlockingQueue``
-
-  - Blocking: Yes
-
-  - Bounded: Yes
-
-  - Configuration name: "bounded" or "akka.dispatch.BoundedMailbox"
-
-* UnboundedPriorityMailbox
-
-  - Backed by a ``java.util.concurrent.PriorityBlockingQueue``
-
-  - Delivery order for messages of equal priority is undefined - contrast with the UnboundedStablePriorityMailbox
-
-  - Blocking: Yes
-
   - Bounded: No
 
-  - Configuration name: "akka.dispatch.UnboundedPriorityMailbox"
+  - Configuration name: ``"akka.dispatch.SingleConsumerOnlyUnboundedMailbox"``
 
-* BoundedPriorityMailbox
+* **NonBlockingBoundedMailbox**
 
-  - Backed by a ``java.util.PriorityQueue`` wrapped in an ``akka.util.BoundedBlockingQueue``
+  - Backed by a very efficient Multiple-Producer Single-Consumer queue
 
-  - Delivery order for messages of equal priority is undefined - contrast with the BoundedStablePriorityMailbox
-
-  - Blocking: Yes
+  - Blocking: No (discards overflowing messages into deadLetters)
 
   - Bounded: Yes
 
-  - Configuration name: "akka.dispatch.BoundedPriorityMailbox"
+  - Configuration name: ``"akka.dispatch.NonBlockingBoundedMailbox"``
 
-* UnboundedStablePriorityMailbox
-
-  - Backed by a ``java.util.concurrent.PriorityBlockingQueue`` wrapped in an ``akka.util.PriorityQueueStabilizer``
-
-  - FIFO order is preserved for messages of equal priority - contrast with the UnboundedPriorityMailbox
-
-  - Blocking: Yes
-
-  - Bounded: No
-
-  - Configuration name: "akka.dispatch.UnboundedStablePriorityMailbox"
-
-* BoundedStablePriorityMailbox
-
-  - Backed by a ``java.util.PriorityQueue`` wrapped in an ``akka.util.PriorityQueueStabilizer`` and an ``akka.util.BoundedBlockingQueue``
-
-  - FIFO order is preserved for messages of equal priority - contrast with the BoundedPriorityMailbox
-
-  - Blocking: Yes
-
-  - Bounded: Yes
-
-  - Configuration name: "akka.dispatch.BoundedStablePriorityMailbox"
-
-* UnboundedControlAwareMailbox
+* **UnboundedControlAwareMailbox**
 
   - Delivers messages that extend ``akka.dispatch.ControlMessage`` with higher priority
 
@@ -210,14 +155,77 @@ Akka comes shipped with a number of mailbox implementations:
   - Bounded: No
 
   - Configuration name: "akka.dispatch.UnboundedControlAwareMailbox"
+  
+* **UnboundedPriorityMailbox**
 
-* BoundedControlAwareMailbox
+  - Backed by a ``java.util.concurrent.PriorityBlockingQueue``
+
+  - Delivery order for messages of equal priority is undefined - contrast with the UnboundedStablePriorityMailbox
+
+  - Blocking: No
+
+  - Bounded: No
+
+  - Configuration name: "akka.dispatch.UnboundedPriorityMailbox"
+  
+* **UnboundedStablePriorityMailbox**
+
+  - Backed by a ``java.util.concurrent.PriorityBlockingQueue`` wrapped in an ``akka.util.PriorityQueueStabilizer``
+
+  - FIFO order is preserved for messages of equal priority - contrast with the UnboundedPriorityMailbox
+
+  - Blocking: No
+
+  - Bounded: No
+
+  - Configuration name: "akka.dispatch.UnboundedStablePriorityMailbox"
+
+Other bounded mailbox implementations which will block the sender if the capacity is reached and
+configured with non-zero ``mailbox-push-timeout-time``. 
+
+.. note:: The following mailboxes should only be used with zero ``mailbox-push-timeout-time``.
+
+* **BoundedMailbox**
+
+  - Backed by a ``java.util.concurrent.LinkedBlockingQueue``
+
+  - Blocking: Yes if used with non-zero ``mailbox-push-timeout-time``, otherwise No
+
+  - Bounded: Yes
+
+  - Configuration name: "bounded" or "akka.dispatch.BoundedMailbox"
+
+* **BoundedPriorityMailbox**
+
+  - Backed by a ``java.util.PriorityQueue`` wrapped in an ``akka.util.BoundedBlockingQueue``
+
+  - Delivery order for messages of equal priority is undefined - contrast with the ``BoundedStablePriorityMailbox``
+
+  - Blocking: Yes if used with non-zero ``mailbox-push-timeout-time``, otherwise No
+
+  - Bounded: Yes
+
+  - Configuration name: ``"akka.dispatch.BoundedPriorityMailbox"``
+
+* **BoundedStablePriorityMailbox**
+
+  - Backed by a ``java.util.PriorityQueue`` wrapped in an ``akka.util.PriorityQueueStabilizer`` and an ``akka.util.BoundedBlockingQueue``
+
+  - FIFO order is preserved for messages of equal priority - contrast with the BoundedPriorityMailbox
+
+  - Blocking: Yes if used with non-zero ``mailbox-push-timeout-time``, otherwise No
+
+  - Bounded: Yes
+
+  - Configuration name: "akka.dispatch.BoundedStablePriorityMailbox"
+
+* **BoundedControlAwareMailbox**
 
   - Delivers messages that extend ``akka.dispatch.ControlMessage`` with higher priority
 
   - Backed by two ``java.util.concurrent.ConcurrentLinkedQueue`` and blocking on enqueue if capacity has been reached
 
-  - Blocking: Yes
+  - Blocking: Yes if used with non-zero ``mailbox-push-timeout-time``, otherwise No
 
   - Bounded: Yes
 

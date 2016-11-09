@@ -1,9 +1,8 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.routing
 
-import scala.concurrent.duration._
 import akka.ConfigurationException
 import akka.actor.ActorPath
 import akka.actor.ActorSystemImpl
@@ -23,13 +22,13 @@ import akka.dispatch.MessageDispatcher
  * send a message to one (or more) of these actors.
  */
 private[akka] class RoutedActorRef(
-  _system: ActorSystemImpl,
-  _routerProps: Props,
+  _system:           ActorSystemImpl,
+  _routerProps:      Props,
   _routerDispatcher: MessageDispatcher,
-  _routerMailbox: MailboxType,
-  _routeeProps: Props,
-  _supervisor: InternalActorRef,
-  _path: ActorPath)
+  _routerMailbox:    MailboxType,
+  _routeeProps:      Props,
+  _supervisor:       InternalActorRef,
+  _path:             ActorPath)
   extends RepointableActorRef(_system, _routerProps, _routerDispatcher, _routerMailbox, _supervisor, _path) {
 
   // verify that a BalancingDispatcher is not used with a Router

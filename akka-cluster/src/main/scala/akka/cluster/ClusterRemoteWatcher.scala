@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -9,8 +9,10 @@ import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberEvent
 import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.ClusterEvent.MemberRemoved
+import akka.cluster.ClusterEvent.MemberWeaklyUp
 import akka.remote.FailureDetectorRegistry
 import akka.remote.RemoteWatcher
+import akka.remote.RARP
 
 /**
  * INTERNAL API
@@ -20,9 +22,9 @@ private[cluster] object ClusterRemoteWatcher {
    * Factory method for `ClusterRemoteWatcher` [[akka.actor.Props]].
    */
   def props(
-    failureDetector: FailureDetectorRegistry[Address],
-    heartbeatInterval: FiniteDuration,
-    unreachableReaperInterval: FiniteDuration,
+    failureDetector:                FailureDetectorRegistry[Address],
+    heartbeatInterval:              FiniteDuration,
+    unreachableReaperInterval:      FiniteDuration,
     heartbeatExpectedResponseAfter: FiniteDuration): Props =
     Props(classOf[ClusterRemoteWatcher], failureDetector, heartbeatInterval, unreachableReaperInterval,
       heartbeatExpectedResponseAfter).withDeploy(Deploy.local)
@@ -40,9 +42,9 @@ private[cluster] object ClusterRemoteWatcher {
  * of the cluster and then later becomes cluster member.
  */
 private[cluster] class ClusterRemoteWatcher(
-  failureDetector: FailureDetectorRegistry[Address],
-  heartbeatInterval: FiniteDuration,
-  unreachableReaperInterval: FiniteDuration,
+  failureDetector:                FailureDetectorRegistry[Address],
+  heartbeatInterval:              FiniteDuration,
+  unreachableReaperInterval:      FiniteDuration,
   heartbeatExpectedResponseAfter: FiniteDuration)
   extends RemoteWatcher(
     failureDetector,
@@ -50,8 +52,11 @@ private[cluster] class ClusterRemoteWatcher(
     unreachableReaperInterval,
     heartbeatExpectedResponseAfter) {
 
+  private val arteryEnabled = RARP(context.system).provider.remoteSettings.Artery.Enabled
   val cluster = Cluster(context.system)
   import cluster.selfAddress
+
+  private final case class DelayedQuarantine(m: Member, previousStatus: MemberStatus) extends NoSerializationVerificationNeeded
 
   var clusterNodes: Set[Address] = Set.empty
 
@@ -71,23 +76,39 @@ private[cluster] class ClusterRemoteWatcher(
     case state: CurrentClusterState ⇒
       clusterNodes = state.members.collect { case m if m.address != selfAddress ⇒ m.address }
       clusterNodes foreach takeOverResponsibility
-      unreachable --= clusterNodes
-    case MemberUp(m) ⇒
-      if (m.address != selfAddress) {
-        clusterNodes += m.address
-        takeOverResponsibility(m.address)
-        unreachable -= m.address
-      }
-    case MemberRemoved(m, previousStatus) ⇒
-      if (m.address != selfAddress) {
-        clusterNodes -= m.address
-        if (previousStatus == MemberStatus.Down) {
-          quarantine(m.address, Some(m.uniqueAddress.uid))
-        }
-        publishAddressTerminated(m.address)
-      }
-    case _: MemberEvent ⇒ // not interesting
+      unreachable = unreachable diff clusterNodes
+    case MemberUp(m)                          ⇒ memberUp(m)
+    case MemberWeaklyUp(m)                    ⇒ memberUp(m)
+    case MemberRemoved(m, previousStatus)     ⇒ memberRemoved(m, previousStatus)
+    case _: MemberEvent                       ⇒ // not interesting
+    case DelayedQuarantine(m, previousStatus) ⇒ delayedQuarantine(m, previousStatus)
   }
+
+  def memberUp(m: Member): Unit =
+    if (m.address != selfAddress) {
+      clusterNodes += m.address
+      takeOverResponsibility(m.address)
+      unreachable -= m.address
+    }
+
+  def memberRemoved(m: Member, previousStatus: MemberStatus): Unit =
+    if (m.address != selfAddress) {
+      clusterNodes -= m.address
+
+      if (previousStatus == MemberStatus.Down) {
+        quarantine(m.address, Some(m.uniqueAddress.longUid), s"Cluster member removed, previous status [$previousStatus]")
+      } else if (arteryEnabled) {
+        // don't quarantine gracefully removed members (leaving) directly,
+        // give Cluster Singleton some time to exchange TakeOver/HandOver messages.
+        import context.dispatcher
+        context.system.scheduler.scheduleOnce(cluster.settings.QuarantineRemovedNodeAfter, self, DelayedQuarantine(m, previousStatus))
+      }
+
+      publishAddressTerminated(m.address)
+    }
+
+  def delayedQuarantine(m: Member, previousStatus: MemberStatus): Unit =
+    quarantine(m.address, Some(m.uniqueAddress.longUid), s"Cluster member removed, previous status [$previousStatus]")
 
   override def watchNode(watchee: InternalActorRef) =
     if (!clusterNodes(watchee.path.address)) super.watchNode(watchee)

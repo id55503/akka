@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
@@ -7,11 +7,9 @@ package akka.cluster
 import org.scalatest.WordSpec
 import org.scalatest.Matchers
 import akka.actor.Address
-import scala.concurrent.duration._
-import scala.collection.immutable
 import akka.remote.FailureDetector
 import akka.remote.DefaultFailureDetectorRegistry
-import scala.concurrent.forkjoin.ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom
 
 object ClusterHeartbeatSenderStateSpec {
   class FailureDetectorStub extends FailureDetector {
@@ -39,7 +37,6 @@ object ClusterHeartbeatSenderStateSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ClusterHeartbeatSenderStateSpec extends WordSpec with Matchers {
   import ClusterHeartbeatSenderStateSpec._
 
@@ -163,7 +160,7 @@ class ClusterHeartbeatSenderStateSpec extends WordSpec with Matchers {
                 val oldUnreachable = state.oldReceiversNowUnreachable
                 state = state.addMember(node)
                 // keep unreachable
-                (oldUnreachable -- state.activeReceivers) should ===(Set.empty)
+                (oldUnreachable diff state.activeReceivers) should ===(Set.empty)
                 state.failureDetector.isMonitoring(node.address) should ===(false)
                 state.failureDetector.isAvailable(node.address) should ===(true)
               }
@@ -174,9 +171,9 @@ class ClusterHeartbeatSenderStateSpec extends WordSpec with Matchers {
                 state = state.removeMember(node)
                 // keep unreachable, unless it was the removed
                 if (oldUnreachable(node))
-                  (oldUnreachable -- state.activeReceivers) should ===(Set(node))
+                  (oldUnreachable diff state.activeReceivers) should ===(Set(node))
                 else
-                  (oldUnreachable -- state.activeReceivers) should ===(Set.empty)
+                  (oldUnreachable diff state.activeReceivers) should ===(Set.empty)
 
                 state.failureDetector.isMonitoring(node.address) should ===(false)
                 state.failureDetector.isAvailable(node.address) should ===(true)

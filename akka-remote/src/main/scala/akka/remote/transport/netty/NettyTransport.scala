@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.transport.netty
 
@@ -12,7 +12,7 @@ import akka.remote.transport.netty.NettyTransportSettings.{ Udp, Tcp, Mode }
 import akka.remote.transport.{ AssociationHandle, Transport }
 import akka.{ OnlyCauseStackTrace, ConfigurationException }
 import com.typesafe.config.Config
-import java.net.{ UnknownHostException, SocketAddress, InetAddress, InetSocketAddress, ConnectException }
+import java.net.{ SocketAddress, InetAddress, InetSocketAddress }
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{ ConcurrentHashMap, Executors, CancellationException }
 import org.jboss.netty.bootstrap.{ ConnectionlessBootstrap, Bootstrap, ClientBootstrap, ServerBootstrap }
@@ -22,9 +22,9 @@ import org.jboss.netty.channel.group.{ DefaultChannelGroup, ChannelGroup, Channe
 import org.jboss.netty.channel.socket.nio.{ NioWorkerPool, NioDatagramChannelFactory, NioServerSocketChannelFactory, NioClientSocketChannelFactory }
 import org.jboss.netty.handler.codec.frame.{ LengthFieldBasedFrameDecoder, LengthFieldPrepender }
 import org.jboss.netty.handler.ssl.SslHandler
-import scala.concurrent.duration.{ Duration, FiniteDuration, MILLISECONDS }
+import scala.concurrent.duration.{ FiniteDuration }
 import scala.concurrent.{ ExecutionContext, Promise, Future, blocking }
-import scala.util.{ Failure, Success, Try }
+import scala.util.{ Try }
 import scala.util.control.{ NoStackTrace, NonFatal }
 import akka.util.Helpers.Requiring
 import akka.util.Helpers
@@ -66,6 +66,11 @@ object NettyFutureBridge {
 
 @SerialVersionUID(1L)
 class NettyTransportException(msg: String, cause: Throwable) extends RuntimeException(msg, cause) with OnlyCauseStackTrace {
+  def this(msg: String) = this(msg, null)
+}
+
+@SerialVersionUID(1L)
+class NettyTransportExceptionNoStack(msg: String, cause: Throwable) extends NettyTransportException(msg, cause) with NoStackTrace {
   def this(msg: String) = this(msg, null)
 }
 
@@ -162,10 +167,11 @@ private[netty] trait CommonHandlers extends NettyHelpers {
 
   protected def createHandle(channel: Channel, localAddress: Address, remoteAddress: Address): AssociationHandle
 
-  protected def registerListener(channel: Channel,
-                                 listener: HandleEventListener,
-                                 msg: ChannelBuffer,
-                                 remoteSocketAddress: InetSocketAddress): Unit
+  protected def registerListener(
+    channel:             Channel,
+    listener:            HandleEventListener,
+    msg:                 ChannelBuffer,
+    remoteSocketAddress: InetSocketAddress): Unit
 
   final protected def init(channel: Channel, remoteSocketAddress: SocketAddress, remoteAddress: Address, msg: ChannelBuffer)(
     op: (AssociationHandle ⇒ Any)): Unit = {
@@ -188,8 +194,9 @@ private[netty] trait CommonHandlers extends NettyHelpers {
 /**
  * INTERNAL API
  */
-private[netty] abstract class ServerHandler(protected final val transport: NettyTransport,
-                                            private final val associationListenerFuture: Future[AssociationEventListener])
+private[netty] abstract class ServerHandler(
+  protected final val transport:               NettyTransport,
+  private final val associationListenerFuture: Future[AssociationEventListener])
   extends NettyServerHelpers with CommonHandlers {
 
   import transport.executionContext
@@ -200,7 +207,7 @@ private[netty] abstract class ServerHandler(protected final val transport: Netty
       case listener: AssociationEventListener ⇒
         val remoteAddress = NettyTransport.addressFromSocketAddress(remoteSocketAddress, transport.schemeIdentifier,
           transport.system.name, hostName = None, port = None).getOrElse(
-            throw new NettyTransportException(s"Unknown inbound remote address type [${remoteSocketAddress.getClass.getName}]"))
+          throw new NettyTransportException(s"Unknown inbound remote address type [${remoteSocketAddress.getClass.getName}]"))
         init(channel, remoteSocketAddress, remoteAddress, msg) { listener notify InboundAssociation(_) }
     }
   }
@@ -240,7 +247,7 @@ private[transport] object NettyTransport {
   def addressFromSocketAddress(addr: SocketAddress, schemeIdentifier: String, systemName: String,
                                hostName: Option[String], port: Option[Int]): Option[Address] = addr match {
     case sa: InetSocketAddress ⇒ Some(Address(schemeIdentifier, systemName,
-      hostName.getOrElse(sa.getAddress.getHostAddress), port.getOrElse(sa.getPort))) // perhaps use getHostString in jdk 1.7
+      hostName.getOrElse(sa.getHostString), port.getOrElse(sa.getPort)))
     case _ ⇒ None
   }
 
@@ -273,7 +280,7 @@ class NettyTransport(val settings: NettyTransportSettings, val system: ExtendedA
   @volatile private var boundTo: Address = _
   @volatile private var serverChannel: Channel = _
 
-  private val log = Logging(system, this.getClass)
+  private val log = Logging.withMarker(system, this.getClass)
 
   /**
    * INTERNAL API
@@ -365,7 +372,7 @@ class NettyTransport(val settings: NettyTransportSettings, val system: ExtendedA
   private def setupBootstrap[B <: Bootstrap](bootstrap: B, pipelineFactory: ChannelPipelineFactory): B = {
     bootstrap.setPipelineFactory(pipelineFactory)
     bootstrap.setOption("backlog", settings.Backlog)
-    bootstrap.setOption("tcpNoDelay", settings.TcpNodelay)
+    bootstrap.setOption("child.tcpNoDelay", settings.TcpNodelay)
     bootstrap.setOption("child.keepAlive", settings.TcpKeepalive)
     bootstrap.setOption("reuseAddress", settings.TcpReuseAddr)
     if (isDatagram) bootstrap.setOption("receiveBufferSizePredictorFactory", new FixedReceiveBufferSizePredictorFactory(ReceiveBufferSize.get))
@@ -432,7 +439,7 @@ class NettyTransport(val settings: NettyTransportSettings, val system: ExtendedA
       } catch {
         case NonFatal(e) ⇒ {
           log.error("failed to bind to {}, shutting down Netty transport", address)
-          try { shutdown() } catch { case NonFatal(e) ⇒ } // ingore possible exception during shutdown
+          try { shutdown() } catch { case NonFatal(e) ⇒ } // ignore possible exception during shutdown
           throw e
         }
       }
@@ -473,8 +480,16 @@ class NettyTransport(val settings: NettyTransportSettings, val system: ExtendedA
         else
           readyChannel.getPipeline.get(classOf[ClientHandler]).statusFuture
       } yield handle) recover {
-        case c: CancellationException ⇒ throw new NettyTransportException("Connection was cancelled") with NoStackTrace
-        case NonFatal(t)              ⇒ throw new NettyTransportException(t.getMessage, t.getCause) with NoStackTrace
+        case c: CancellationException ⇒ throw new NettyTransportExceptionNoStack("Connection was cancelled")
+        case NonFatal(t) ⇒
+          val msg =
+            if (t.getCause == null)
+              t.getMessage
+            else if (t.getCause.getCause == null)
+              s"${t.getMessage}, caused by: ${t.getCause}"
+            else
+              s"${t.getMessage}, caused by: ${t.getCause}, caused by: ${t.getCause.getCause}"
+          throw new NettyTransportExceptionNoStack(msg, t.getCause)
       }
     }
   }

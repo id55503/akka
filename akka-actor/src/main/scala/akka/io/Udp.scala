@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.io
 
@@ -92,9 +92,10 @@ object Udp extends ExtensionId[UdpExt] with ExtensionIdProvider {
    * The listener actor for the newly bound port will reply with a [[Bound]]
    * message, or the manager will reply with a [[CommandFailed]] message.
    */
-  final case class Bind(handler: ActorRef,
-                        localAddress: InetSocketAddress,
-                        options: immutable.Traversable[SocketOption] = Nil) extends Command
+  final case class Bind(
+    handler:      ActorRef,
+    localAddress: InetSocketAddress,
+    options:      immutable.Traversable[SocketOption] = Nil) extends Command
 
   /**
    * Send this message to the listener actor that previously sent a [[Bound]]
@@ -235,7 +236,6 @@ object UdpMessage {
   import Udp._
   import java.lang.{ Iterable ⇒ JIterable }
   import scala.collection.JavaConverters._
-  import language.implicitConversions
 
   /**
    * Each [[Udp.Send]] can optionally request a positive acknowledgment to be sent

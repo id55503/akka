@@ -1,9 +1,23 @@
+/**
+ * Copyright (C) 2016 Lightbend Inc. <http://www.lightbend.com>
+ */
 package akka
 
 import sbt._
 import sbt.Keys._
 
 object Sample {
+
+  object CliOptions {
+    /**
+     * Aggregated sample builds are transformed by swapping library dependencies to project ones.
+     * This does work play well with dbuild and breaks scala community build. Therefore it was made
+     * optional.
+     *
+     * Default: true
+     */
+    val aggregateSamples  = sys.props.getOrElse("akka.build.aggregateSamples", "true").toBoolean
+  }
 
   final val akkaOrganization = "com.typesafe.akka"
 
@@ -30,7 +44,7 @@ object Sample {
         val dependencies = buildDependencies.value
         val classpathWithProjectDependencies = dependencies.classpath.map {
           case (proj, deps) if proj.project == project.id =>
-            // add project dependency for every akka library dependnecy
+            // add project dependency for every akka library dependency
             (proj, deps ++ projectDependencies.map(ResolvedClasspathDependency(_, None)))
           case (project, deps) => (project, deps)
         }
@@ -62,7 +76,6 @@ object Sample {
    */
   private val enableAutoPlugins = (project: Project) =>
     project.settings((
-      MiMa.projectSettings ++
       Publish.projectSettings ++
       ValidatePullRequest.projectSettings
     ): _*).configs(ValidatePullRequest.ValidatePR)

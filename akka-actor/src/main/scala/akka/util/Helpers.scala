@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.util
 
@@ -14,7 +14,9 @@ import java.util.Locale
 
 object Helpers {
 
-  val isWindows: Boolean = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).indexOf("win") >= 0
+  def toRootLowerCase(s: String) = s.toLowerCase(Locale.ROOT)
+
+  val isWindows: Boolean = toRootLowerCase(System.getProperty("os.name", "")).indexOf("win") >= 0
 
   def makePattern(s: String): Pattern = Pattern.compile("^\\Q" + s.replace("?", "\\E.\\Q").replace("*", "\\E.*\\Q") + "\\E$")
 

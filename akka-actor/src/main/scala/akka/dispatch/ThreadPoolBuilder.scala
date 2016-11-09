@@ -1,11 +1,11 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.dispatch
 
 import java.util.Collection
-import scala.concurrent.{ Awaitable, BlockContext, CanAwait }
+import scala.concurrent.{ BlockContext, CanAwait }
 import scala.concurrent.duration.Duration
 import scala.concurrent.forkjoin._
 import java.util.concurrent.{
@@ -65,12 +65,13 @@ trait ExecutorServiceFactoryProvider {
 /**
  * A small configuration DSL to create ThreadPoolExecutors that can be provided as an ExecutorServiceFactoryProvider to Dispatcher
  */
-final case class ThreadPoolConfig(allowCorePoolTimeout: Boolean = ThreadPoolConfig.defaultAllowCoreThreadTimeout,
-                                  corePoolSize: Int = ThreadPoolConfig.defaultCorePoolSize,
-                                  maxPoolSize: Int = ThreadPoolConfig.defaultMaxPoolSize,
-                                  threadTimeout: Duration = ThreadPoolConfig.defaultTimeout,
-                                  queueFactory: ThreadPoolConfig.QueueFactory = ThreadPoolConfig.linkedBlockingQueue(),
-                                  rejectionPolicy: RejectedExecutionHandler = ThreadPoolConfig.defaultRejectionPolicy)
+final case class ThreadPoolConfig(
+  allowCorePoolTimeout: Boolean                       = ThreadPoolConfig.defaultAllowCoreThreadTimeout,
+  corePoolSize:         Int                           = ThreadPoolConfig.defaultCorePoolSize,
+  maxPoolSize:          Int                           = ThreadPoolConfig.defaultMaxPoolSize,
+  threadTimeout:        Duration                      = ThreadPoolConfig.defaultTimeout,
+  queueFactory:         ThreadPoolConfig.QueueFactory = ThreadPoolConfig.linkedBlockingQueue(),
+  rejectionPolicy:      RejectedExecutionHandler      = ThreadPoolConfig.defaultRejectionPolicy)
   extends ExecutorServiceFactoryProvider {
   class ThreadPoolExecutorServiceFactory(val threadFactory: ThreadFactory) extends ExecutorServiceFactory {
     def createExecutorService: ExecutorService = {
@@ -123,17 +124,14 @@ final case class ThreadPoolConfigBuilder(config: ThreadPoolConfig) {
   def withNewThreadPoolWithArrayBlockingQueueWithCapacityAndFairness(capacity: Int, fair: Boolean): ThreadPoolConfigBuilder =
     this.copy(config = config.copy(queueFactory = arrayBlockingQueue(capacity, fair)))
 
+  def setFixedPoolSize(size: Int): ThreadPoolConfigBuilder =
+    this.copy(config = config.copy(corePoolSize = size, maxPoolSize = size))
+
   def setCorePoolSize(size: Int): ThreadPoolConfigBuilder =
-    if (config.maxPoolSize < size)
-      this.copy(config = config.copy(corePoolSize = size, maxPoolSize = size))
-    else
-      this.copy(config = config.copy(corePoolSize = size))
+    this.copy(config = config.copy(corePoolSize = size, maxPoolSize = math.max(size, config.maxPoolSize)))
 
   def setMaxPoolSize(size: Int): ThreadPoolConfigBuilder =
-    if (config.corePoolSize > size)
-      this.copy(config = config.copy(corePoolSize = size, maxPoolSize = size))
-    else
-      this.copy(config = config.copy(maxPoolSize = size))
+    this.copy(config = config.copy(maxPoolSize = math.max(size, config.corePoolSize)))
 
   def setCorePoolSizeFromFactor(min: Int, multiplier: Double, max: Int): ThreadPoolConfigBuilder =
     setCorePoolSize(scaledPoolSize(min, multiplier, max))
@@ -176,11 +174,12 @@ object MonitorableThreadFactory {
   }
 }
 
-final case class MonitorableThreadFactory(name: String,
-                                          daemonic: Boolean,
-                                          contextClassLoader: Option[ClassLoader],
-                                          exceptionHandler: Thread.UncaughtExceptionHandler = MonitorableThreadFactory.doNothing,
-                                          protected val counter: AtomicLong = new AtomicLong)
+final case class MonitorableThreadFactory(
+  name:                  String,
+  daemonic:              Boolean,
+  contextClassLoader:    Option[ClassLoader],
+  exceptionHandler:      Thread.UncaughtExceptionHandler = MonitorableThreadFactory.doNothing,
+  protected val counter: AtomicLong                      = new AtomicLong)
   extends ThreadFactory with ForkJoinPool.ForkJoinWorkerThreadFactory {
 
   def newThread(pool: ForkJoinPool): ForkJoinWorkerThread = {

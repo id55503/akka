@@ -1,13 +1,11 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.metrics.protobuf
 
 import akka.actor.{ ExtendedActorSystem, Address }
-import collection.immutable.SortedSet
 import akka.testkit.AkkaSpec
-import java.math.BigInteger
 import akka.cluster.MemberStatus
 import akka.cluster.metrics.MetricsGossip
 import akka.cluster.metrics.NodeMetrics
@@ -16,15 +14,14 @@ import akka.cluster.metrics.EWMA
 import akka.cluster.TestMember
 import akka.cluster.metrics.MetricsGossipEnvelope
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class MessageSerializerSpec extends AkkaSpec(
-  "akka.actor.provider = akka.cluster.ClusterActorRefProvider") {
+  "akka.actor.provider = cluster") {
 
   val serializer = new MessageSerializer(system.asInstanceOf[ExtendedActorSystem])
 
   def checkSerialization(obj: AnyRef): Unit = {
     val blob = serializer.toBinary(obj)
-    val ref = serializer.fromBinary(blob, obj.getClass)
+    val ref = serializer.fromBinary(blob, serializer.manifest(obj))
     obj match {
       case _ ⇒
         ref should ===(obj)
@@ -45,8 +42,10 @@ class MessageSerializerSpec extends AkkaSpec(
 
     "be serializable" in {
 
-      val metricsGossip = MetricsGossip(Set(NodeMetrics(a1.address, 4711, Set(Metric("foo", 1.2, None))),
-        NodeMetrics(b1.address, 4712, Set(Metric("foo", 2.1, Some(EWMA(value = 100.0, alpha = 0.18))),
+      val metricsGossip = MetricsGossip(Set(
+        NodeMetrics(a1.address, 4711, Set(Metric("foo", 1.2, None))),
+        NodeMetrics(b1.address, 4712, Set(
+          Metric("foo", 2.1, Some(EWMA(value = 100.0, alpha = 0.18))),
           Metric("bar1", Double.MinPositiveValue, None),
           Metric("bar2", Float.MaxValue, None),
           Metric("bar3", Int.MaxValue, None),

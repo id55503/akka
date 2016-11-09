@@ -1,14 +1,12 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
 import language.postfixOps
 
-import java.util.concurrent.{ CountDownLatch, TimeUnit }
-import akka.actor._
 import org.scalatest.BeforeAndAfterAll
-import akka.testkit.{ TestKit, filterEvents, EventFilter }
+import akka.testkit.{ filterEvents, EventFilter }
 import akka.testkit.AkkaSpec
 import akka.testkit.ImplicitSender
 import akka.testkit.DefaultTimeout
@@ -16,7 +14,6 @@ import scala.concurrent.Await
 import akka.pattern.ask
 import scala.concurrent.duration._
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class Ticket669Spec extends AkkaSpec with BeforeAndAfterAll with ImplicitSender with DefaultTimeout {
   import Ticket669Spec._
 

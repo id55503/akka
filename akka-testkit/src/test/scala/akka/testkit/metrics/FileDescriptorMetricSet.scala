@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit.metrics
 
@@ -18,15 +18,15 @@ private[akka] class FileDescriptorMetricSet(os: OperatingSystemMXBean = Manageme
   override def getMetrics: util.Map[String, Metric] = {
     Map[String, Metric](
 
-      name("file-descriptors", "open") -> new Gauge[Long] {
+      name("file-descriptors", "open") → new Gauge[Long] {
         override def getValue: Long = invoke("getOpenFileDescriptorCount")
       },
 
-      name("file-descriptors", "max") -> new Gauge[Long] {
+      name("file-descriptors", "max") → new Gauge[Long] {
         override def getValue: Long = invoke("getMaxFileDescriptorCount")
       },
 
-      name("file-descriptors", "ratio") -> new FileDescriptorRatioGauge(os)).asJava
+      name("file-descriptors", "ratio") → new FileDescriptorRatioGauge(os)).asJava
   }
 
   private def invoke(name: String): Long = {

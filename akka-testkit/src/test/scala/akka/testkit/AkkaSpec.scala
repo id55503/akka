@@ -1,21 +1,24 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.testkit
 
 import org.scalactic.Constraint
 
-import language.{ postfixOps, reflectiveCalls }
-import org.scalatest.{ WordSpecLike, BeforeAndAfterAll }
+import language.postfixOps
+import org.scalatest.{ BeforeAndAfterAll, WordSpecLike }
 import org.scalatest.Matchers
 import akka.actor.ActorSystem
 import akka.event.{ Logging, LoggingAdapter }
+
 import scala.concurrent.duration._
 import scala.concurrent.Future
 import com.typesafe.config.{ Config, ConfigFactory }
 import akka.dispatch.Dispatchers
 import akka.testkit.TestEvent._
-import org.scalautils.ConversionCheckedTripleEquals
+import org.scalactic.ConversionCheckedTripleEquals
+import org.scalatest.concurrent.ScalaFutures
+import org.scalatest.time.Span
 
 object AkkaSpec {
   val testConf: Config = ConfigFactory.parseString("""
@@ -43,7 +46,7 @@ object AkkaSpec {
 
   def getCallerName(clazz: Class[_]): String = {
     val s = (Thread.currentThread.getStackTrace map (_.getClassName) drop 1)
-      .dropWhile(_ matches "(java.lang.Thread|.*AkkaSpec.?$)")
+      .dropWhile(_ matches "(java.lang.Thread|.*AkkaSpec.?$|.*StreamSpec.?$)")
     val reduced = s.lastIndexWhere(_ == clazz.getName) match {
       case -1 ⇒ s
       case z  ⇒ s drop (z + 1)
@@ -55,9 +58,12 @@ object AkkaSpec {
 
 abstract class AkkaSpec(_system: ActorSystem)
   extends TestKit(_system) with WordSpecLike with Matchers with BeforeAndAfterAll with WatchedByCoroner
-  with ConversionCheckedTripleEquals {
+  with ConversionCheckedTripleEquals with ScalaFutures {
 
-  def this(config: Config) = this(ActorSystem(AkkaSpec.getCallerName(getClass),
+  implicit val patience = PatienceConfig(testKitSettings.DefaultTimeout.duration, Span(100, org.scalatest.time.Millis))
+
+  def this(config: Config) = this(ActorSystem(
+    AkkaSpec.getCallerName(getClass),
     ConfigFactory.load(config.withFallback(AkkaSpec.testConf))))
 
   def this(s: String) = this(ConfigFactory.parseString(s))
@@ -105,5 +111,10 @@ abstract class AkkaSpec(_system: ActorSystem)
   implicit def classEqualityConstraint[A, B]: Constraint[Class[A], Class[B]] =
     new Constraint[Class[A], Class[B]] {
       def areEqual(a: Class[A], b: Class[B]) = a == b
+    }
+
+  implicit def setEqualityConstraint[A, T <: Set[_ <: A]]: Constraint[Set[A], T] =
+    new Constraint[Set[A], T] {
+      def areEqual(a: Set[A], b: T) = a == b
     }
 }

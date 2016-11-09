@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
@@ -59,6 +59,7 @@ abstract class ClusterDeathWatchSpec
   }
 
   "An actor watching a remote actor in the cluster" must {
+
     "receive Terminated when watched node becomes Down/Removed" in within(20 seconds) {
       awaitClusterUp(first, second, third, fourth)
       enterBarrier("cluster-up")

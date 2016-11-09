@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.contrib.throttle
@@ -12,8 +12,6 @@ import akka.actor.Props
 import akka.testkit.TestKit
 import akka.testkit.ImplicitSender
 import akka.contrib.throttle.Throttler._
-import org.junit.runner.RunWith
-import org.scalatest.junit.JUnitRunner
 import org.scalatest.WordSpecLike
 import org.scalatest.Matchers
 import org.scalatest.BeforeAndAfterAll
@@ -33,7 +31,6 @@ object TimerBasedThrottlerSpec {
   //#demo-code
 }
 
-@RunWith(classOf[JUnitRunner])
 class TimerBasedThrottlerSpec extends TestKit(ActorSystem("TimerBasedThrottlerSpec")) with ImplicitSender
   with WordSpecLike with Matchers with BeforeAndAfterAll {
 
@@ -49,7 +46,8 @@ class TimerBasedThrottlerSpec extends TestKit(ActorSystem("TimerBasedThrottlerSp
       //#demo-code
       val printer = system.actorOf(Props[PrintActor])
       // The throttler for this example, setting the rate
-      val throttler = system.actorOf(Props(classOf[TimerBasedThrottler],
+      val throttler = system.actorOf(Props(
+        classOf[TimerBasedThrottler],
         3 msgsPer 1.second))
       // Set the target
       throttler ! SetTarget(Some(printer))

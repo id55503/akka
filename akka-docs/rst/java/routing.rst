@@ -46,7 +46,9 @@ outside of actors.
 .. note::
 
     In general, any message sent to a router will be sent onwards to its routees, but there is one exception.
-    The special :ref:`broadcast-messages-java` will send to *all* of a router's routees 
+    The special :ref:`broadcast-messages-java` will send to *all* of a router's routees.
+    However, do not use :ref:`broadcast-messages-java` when you use :ref:`balancing-pool-java` for routees
+    as described in :ref:`router-special-messages-java`.
 
 A Router Actor
 ^^^^^^^^^^^^^^
@@ -62,11 +64,11 @@ This type of router actor comes in two distinct flavors:
 * Group - The routee actors are created externally to the router and the router sends
   messages to the specified path using actor selection, without watching for termination.  
 
-The settings for a router actor can be defined in configuration or programmatically. 
-Although router actors can be defined in the configuration file, they must still be created
-programmatically, i.e. you cannot make a router through external configuration alone.
-If you define the router actor in the configuration file then these settings will be used
-instead of any programmatically provided parameters.
+The settings for a router actor can be defined in configuration or programmatically.
+In order to make an actor to make use of an externally configurable router the ``FromConfig`` props wrapper must be used
+to denote that the actor accepts routing settings from configuration.
+This is in contrast with Remote Deployment where such marker props is not necessary.
+If the props of an actor is NOT wrapped in ``FromConfig`` it will ignore the router section of the deployment configuration.
 
 You send messages to the routees via the router actor in the same way as for ordinary actors,
 i.e. via its ``ActorRef``. The router actor forwards messages onto its routees without changing 
@@ -263,6 +265,23 @@ BalancingPool
 A Router that will try to redistribute work from busy routees to idle routees.
 All routees share the same mailbox.
 
+.. note::
+
+   The BalancingPool has the property that its routees do not have truly distinct
+   identity: they have different names, but talking to them will not end up at the
+   right actor in most cases. Therefore you cannot use it for workflows that
+   require state to be kept within the routee, you would in this case have to
+   include the whole state in the messages.
+
+   With a `SmallestMailboxPool`_ you can have a vertically scaling service that
+   can interact in a stateful fashion with other services in the back-end before
+   replying to the original client. The other advantage is that it does not place
+   a restriction on the message queue implementation as BalancingPool does.
+
+.. note::
+   Do not use :ref:`broadcast-messages-java` when you use :ref:`balancing-pool-java` for routers,
+   as described in :ref:`router-special-messages-java`.
+
 BalancingPool defined in configuration:
 
 .. includecode:: ../scala/code/docs/routing/RouterDocSpec.scala#config-balancing-pool
@@ -278,6 +297,33 @@ can be configured in the ``pool-dispatcher`` section of the router deployment
 configuration.
 
 .. includecode:: ../scala/code/docs/routing/RouterDocSpec.scala#config-balancing-pool2
+
+The ``BalancingPool`` automatically uses a special ``BalancingDispatcher`` for its
+routees - disregarding any dispatcher that is set on the routee Props object.
+This is needed in order to implement the balancing semantics via
+sharing the same mailbox by all the routees.
+
+While it is not possible to change the dispatcher used by the routees, it is possible
+to fine tune the used *executor*. By default the ``fork-join-dispatcher`` is used and
+can be configured as explained in :ref:`dispatchers-java`. In situations where the
+routees are expected to perform blocking operations it may be useful to replace it
+with a ``thread-pool-executor`` hinting the number of allocated threads explicitly:
+
+.. includecode:: ../scala/code/docs/routing/RouterDocSpec.scala#config-balancing-pool3
+
+It is also possible to change the ``mailbox`` used by the balancing dispatcher for
+scenarios where the default unbounded mailbox is not well suited. An example of such
+a scenario could arise whether there exists the need to manage priority for each message.
+You can then implement a priority mailbox and configure your dispatcher:
+
+.. includecode:: ../scala/code/docs/routing/RouterDocSpec.scala#config-balancing-pool4
+
+.. note::
+
+   Bear in mind that ``BalancingDispatcher`` requires a message queue that must be thread-safe for
+   multiple concurrent consumers. So it is mandatory for the message queue backing a custom mailbox
+   for this kind of dispatcher to implement akka.dispatch.MultipleConsumerSemantics. See details
+   on how to implement your custom mailbox in :ref:`mailboxes-java`.
 
 There is no Group variant of the BalancingPool.
 
@@ -375,7 +421,7 @@ TailChoppingPool and TailChoppingGroup
 --------------------------------------
 
 The TailChoppingRouter will first send the message to one, randomly picked, routee
-and then after a small delay to to a second routee (picked randomly from the remaining routees) and so on.
+and then after a small delay to a second routee (picked randomly from the remaining routees) and so on.
 It waits for first reply it gets back and forwards it back to original sender. Other replies are discarded.
 
 The goal of this router is to decrease latency by performing redundant queries to multiple routees, assuming that
@@ -423,7 +469,7 @@ There is 3 ways to define what data to use for the consistent hash key.
   The key is part of the message and it's convenient to define it together
   with the message definition.
  
-* The messages can be be wrapped in a ``akka.routing.ConsistentHashingRouter.ConsistentHashableEnvelope``
+* The messages can be wrapped in a ``akka.routing.ConsistentHashingRouter.ConsistentHashableEnvelope``
   to define what data to use for the consistent hash key. The sender knows
   the key to use.
  
@@ -494,7 +540,12 @@ to every routee of a router.
 
 In this example the router receives the ``Broadcast`` message, extracts its payload
 (``"Watch out for Davy Jones' locker"``), and then sends the payload on to all of the router's
-routees. It is up to each each routee actor to handle the received payload message.
+routees. It is up to each routee actor to handle the received payload message.
+
+.. note::
+   Do not use :ref:`broadcast-messages-java` when you use :ref:`balancing-pool-java` for routers.
+   Routees on :ref:`balancing-pool-java` shares the same mailbox instance, thus some routees can
+   possibly get the broadcast message multiple times, while other routees get no broadcast message.
 
 PoisonPill Messages
 -------------------
@@ -532,7 +583,7 @@ a resizer.
 .. note::
 
   Brendan W McAdams' excellent blog post `Distributing Akka Workloads - And Shutting Down Afterwards
-  <http://blog.evilmonkeylabs.com/2013/01/17/Distributing_Akka_Workloads_And_Shutting_Down_After/>`_
+  <http://bytes.codes/2013/01/17/Distributing_Akka_Workloads_And_Shutting_Down_After/>`_
   discusses in more detail how ``PoisonPill`` messages can be used to shut down routers and routees.
 
 Kill Messages
@@ -568,7 +619,7 @@ Management Messages
 * Sending ``akka.routing.AdjustPoolSize`` to a pool router actor will add or remove that number of routees to
   its collection of routees.
 
-These management messages may be handled after other messages, so if you send ``AddRoutee`` immediately followed
+These management messages may be handled after other messages, so if you send ``AddRoutee`` immediately followed by
 an ordinary message you are not guaranteed that the routees have been changed when the ordinary message
 is routed. If you need to know when the change has been applied you can send ``AddRoutee`` followed by ``GetRoutees``
 and when you receive the ``Routees`` reply you know that the preceding change has been applied.
@@ -581,7 +632,16 @@ Dynamically Resizable Pool
 All pools can be used with a fixed number of routees or with a resize strategy to adjust the number
 of routees dynamically.
 
-Pool with resizer defined in configuration:
+There are two types of resizers: the default ``Resizer`` and the ``OptimalSizeExploringResizer``.
+
+Default Resizer
+---------------
+
+The default resizer ramps up and down pool size based on pressure, measured by the percentage of busy routees
+in the pool. It ramps up pool size if the pressure is higher than a certain threshold and backs off if the
+pressure is lower than certain threshold. Both thresholds are configurable.
+
+Pool with default resizer defined in configuration:
 
 .. includecode:: ../scala/code/docs/routing/RouterDocSpec.scala#config-resize-pool
 
@@ -596,6 +656,41 @@ Pool with resizer defined in code:
 
 *It is also worth pointing out that if you define the ``router`` in the configuration file then this value
 will be used instead of any programmatically sent parameters.*
+
+Optimal Size Exploring Resizer
+------------------------------
+
+The ``OptimalSizeExploringResizer`` resizes the pool to an optimal size that provides the most message throughput.
+
+It achieves this by keeping track of message throughput at each pool size and performing one of the following
+three resizing operations periodically:
+
+* Downsize if it hasn't seen all routees ever fully utilized for a period of time.
+* Explore to a random nearby pool size to try and collect throughput metrics.
+* Optimize to a nearby pool size with a better (than any other nearby sizes) throughput metrics.
+
+When the pool is fully-utilized (i.e. all routees are busy), it randomly choose between exploring and optimizing.
+When the pool has not been fully-utilized for a period of time, it will downsize the pool to the last seen max
+utilization multiplied by a configurable ratio.
+
+By constantly exploring and optimizing, the resizer will eventually walk to the optimal size and
+remain nearby. When the optimal size changes it will start walking towards the new one.
+This resizer works best when you expect the pool size to performance function to be a convex function.
+For example, when you have a CPU bound tasks, the optimal size is bound to the number of CPU cores.
+When your task is IO bound, the optimal size is bound to optimal number of concurrent connections to that IO service -
+e.g. a 4 node elastic search cluster may handle 4-8 concurrent requests at optimal speed.
+
+It keeps a performance log so it's stateful as well as having a larger memory footprint than the default ``Resizer``.
+The memory usage is O(n) where n is the number of sizes you allow, i.e. upperBound - lowerBound.
+
+Pool with ``OptimalSizeExploringResizer`` defined in configuration:
+
+.. includecode:: ../scala/code/docs/routing/RouterDocSpec.scala#config-optimal-size-exploring-resize-pool
+
+.. includecode:: code/docs/jrouting/RouterDocTest.java#optimal-size-exploring-resize-pool
+
+Several more configuration options are available and described in ``akka.actor.deployment.default.optimal-size-exploring-resizer``
+section of the reference :ref:`configuration`.
 
 .. note::
 
@@ -652,7 +747,7 @@ Start with the routing logic:
 
 ``select`` will be called for each message and in this example pick a few destinations by round-robin,
 by reusing the existing ``RoundRobinRoutingLogic`` and wrap the result in a ``SeveralRoutees``
-instance.  ``SeveralRoutees`` will send the message to all of the supplied routues.
+instance.  ``SeveralRoutees`` will send the message to all of the supplied routes.
 
 The implementation of the routing logic must be thread safe, since it might be used outside of actors.
 

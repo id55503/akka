@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster.singleton
 
@@ -38,15 +38,16 @@ object ClusterSingletonProxySpec {
     joinTo.foreach(address ⇒ cluster.join(address))
 
     cluster.registerOnMemberUp {
-      system.actorOf(ClusterSingletonManager.props(
-        singletonProps = Props[Singleton],
-        terminationMessage = PoisonPill,
-        settings = ClusterSingletonManagerSettings(system)
-          .withRetry(maxHandOverRetries = 5, maxTakeOverRetries = 2, retryInterval = 1.second)),
+      system.actorOf(
+        ClusterSingletonManager.props(
+          singletonProps = Props[Singleton],
+          terminationMessage = PoisonPill,
+          settings = ClusterSingletonManagerSettings(system).withRemovalMargin(5.seconds)),
         name = "singletonManager")
     }
 
-    val proxy = system.actorOf(ClusterSingletonProxy.props("user/singletonManager/singleton",
+    val proxy = system.actorOf(ClusterSingletonProxy.props(
+      "user/singletonManager",
       settings = ClusterSingletonProxySettings(system)), s"singletonProxy-${cluster.selfAddress.port.getOrElse(0)}")
 
     def testProxy(msg: String) {
@@ -57,27 +58,27 @@ object ClusterSingletonProxySpec {
     }
   }
 
-  val cfg = """akka {
-
-                loglevel = INFO
-
-                cluster {
-                  auto-down-unreachable-after = 10s
-
-                  min-nr-of-members = 2
-                }
-
-                actor.provider = "akka.cluster.ClusterActorRefProvider"
-
-                remote {
-                  log-remote-lifecycle-events = off
-                  netty.tcp {
-                    hostname = "127.0.0.1"
-                    port = 0
-                  }
-                }
-              }
-            """
+  val cfg = """
+    akka {
+      loglevel = INFO
+      cluster {
+        auto-down-unreachable-after = 10s
+        min-nr-of-members = 2
+      }
+      actor.provider = "cluster"
+      remote {
+        log-remote-lifecycle-events = off
+        netty.tcp {
+          hostname = "127.0.0.1"
+          port = 0
+        }
+        artery.canonical {
+          hostname  = "127.0.0.1"
+          port = 0
+        }
+      }
+    }
+  """
 
   class Singleton extends Actor with ActorLogging {
 

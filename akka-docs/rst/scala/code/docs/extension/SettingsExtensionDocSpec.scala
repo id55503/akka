@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.extension
 
@@ -22,7 +22,8 @@ import akka.testkit.AkkaSpec
 class SettingsImpl(config: Config) extends Extension {
   val DbUri: String = config.getString("myapp.db.uri")
   val CircuitBreakerTimeout: Duration =
-    Duration(config.getMilliseconds("myapp.circuit-breaker.timeout"),
+    Duration(
+      config.getMilliseconds("myapp.circuit-breaker.timeout"),
       TimeUnit.MILLISECONDS)
 }
 //#extension

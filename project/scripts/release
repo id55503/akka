@@ -20,7 +20,7 @@
 #
 # 1.2) Check that signing works
 #      From inside sbt do the following
-#        sbt> publish-local-signed
+#        sbt> publishLocalSigned
 #      It should should ask you for your pass phrase, and create .asc files for
 #      all artifacts
 #
@@ -170,7 +170,7 @@ fi
 declare -r version=$1
 declare -r publish_path="${release_server}:${release_path}"
 
-[[ `java -version 2>&1 | grep "java version" | cut -d ' ' -f3 | cut -d '.' -f2` -eq 8 ]] || fail "Java version is not 1.8"
+[[ `java -version 2>&1 | grep -E "java version|openjdk version" | cut -d ' ' -f3 | cut -d '.' -f2` -eq 8 ]] || fail "Java version is not 1.8"
 
 # check for a git command
 type -P git &> /dev/null || fail "git command not found"
@@ -194,7 +194,7 @@ function get_current_branch {
 # get the current project version from sbt
 # a little messy as the ansi escape codes are included
 function get_current_version {
-  local result=$(sbt version | tail -1 | cut -f2)
+  local result=$(sbt version | grep -v warn | tail -1 | cut -f2)
   # remove ansi escape code from end
   local code0=$(echo -e "\033[0m")
   echo ${result%$code0}
@@ -300,13 +300,13 @@ if [ ! $dry_run ]; then
 else
   RELEASE_OPT="-Dakka.genjavadoc.enabled=true"
 fi
-try sbt $RELEASE_OPT +build-release
+try sbt $RELEASE_OPT +buildRelease
 echolog "Successfully created local release"
 
 # check binary compatibility for dry run
 if [ ! $no_mima ] && [ $dry_run ]; then
   echodry "Running migration manager report..."
-  sbt mima-report-binary-issues
+  sbt mimaReportBinaryIssues
   echodry "Finished migration manager report"
 fi
 
@@ -358,11 +358,19 @@ echolog "Pushing ${release_dir} to ${publish_path} ..."
 if [ $dry_run ]; then
   echodry "Not actually pushing to server. Command:"
   echodry "  rsync -rlpvz --chmod=Dg+ws,Fg+w --exclude ${release_dir}/downloads ${release_dir}/ ${publish_path}/"
-  echodry "  sbt upload-release"
+  echodry "  sbt uploadRelease"
 else
+  important ssh ${release_server} "cd ${release_path}/docs/akka; git add .; git commit -m 'before publishing version $version'; true"
   important rsync -rlpvz --chmod=Dg+ws,Fg+w --exclude ${release_dir}/downloads ${release_dir}/ ${publish_path}/
-  important sbt upload-release
+  important sbt uploadRelease
+  important ssh ${release_server} cp -v ${release_path}/docs/akka/${version}/_static/warnOldDocs.js ${release_path}/docs/akka
+  important ssh ${release_server} ln -snvf ../../warnOldDocs.js ${release_path}/docs/akka/${version}/_static/warnOldDocs.js
+  important ssh ${release_server} "cd ${release_path}/docs/akka; git add .; git commit -m 'publish version $version'"
 fi
+
+echolog "*****"
+echolog "Do not forget to update versions.json on akka.github.com!"
+echolog "*****"
 
 if [ $dry_run ]; then
   if [ $no_revert ]; then

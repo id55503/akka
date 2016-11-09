@@ -1,17 +1,18 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.event.slf4j
 
-import org.slf4j.{ Logger ⇒ SLFLogger, LoggerFactory ⇒ SLFLoggerFactory }
-import org.slf4j.MDC
+import org.slf4j.{ MDC, Marker, MarkerFactory, Logger ⇒ SLFLogger, LoggerFactory ⇒ SLFLoggerFactory }
 import akka.event.Logging._
 import akka.actor._
 import akka.event.DummyClassForStringSources
 import akka.util.Helpers
 import akka.event.LoggingFilter
 import akka.event.EventStream
+import akka.dispatch.RequiresMessageQueue
+import akka.event.LoggerMessageQueueSemantics
 
 /**
  * Base trait for all classes that wants to be able use the SLF4J logging infrastructure.
@@ -53,7 +54,7 @@ object Logger {
  * The thread in which the logging was performed is captured in
  * Mapped Diagnostic Context (MDC) with attribute name "sourceThread".
  */
-class Slf4jLogger extends Actor with SLF4JLogging {
+class Slf4jLogger extends Actor with SLF4JLogging with RequiresMessageQueue[LoggerMessageQueueSemantics] {
 
   val mdcThreadAttributeName = "sourceThread"
   val mdcActorSystemAttributeName = "sourceActorSystem"
@@ -65,19 +66,27 @@ class Slf4jLogger extends Actor with SLF4JLogging {
     case event @ Error(cause, logSource, logClass, message) ⇒
       withMdc(logSource, event) {
         cause match {
-          case Error.NoCause | null ⇒ Logger(logClass, logSource).error(if (message != null) message.toString else null)
-          case _                    ⇒ Logger(logClass, logSource).error(if (message != null) message.toString else cause.getLocalizedMessage, cause)
+          case Error.NoCause | null ⇒
+            Logger(logClass, logSource).error(markerIfPresent(event), if (message != null) message.toString else null)
+          case _ ⇒
+            Logger(logClass, logSource).error(markerIfPresent(event), if (message != null) message.toString else cause.getLocalizedMessage, cause)
         }
       }
 
     case event @ Warning(logSource, logClass, message) ⇒
-      withMdc(logSource, event) { Logger(logClass, logSource).warn("{}", message.asInstanceOf[AnyRef]) }
+      withMdc(logSource, event) {
+        Logger(logClass, logSource).warn(markerIfPresent(event), "{}", message.asInstanceOf[AnyRef])
+      }
 
     case event @ Info(logSource, logClass, message) ⇒
-      withMdc(logSource, event) { Logger(logClass, logSource).info("{}", message.asInstanceOf[AnyRef]) }
+      withMdc(logSource, event) {
+        Logger(logClass, logSource).info(markerIfPresent(event), "{}", message.asInstanceOf[AnyRef])
+      }
 
     case event @ Debug(logSource, logClass, message) ⇒
-      withMdc(logSource, event) { Logger(logClass, logSource).debug("{}", message.asInstanceOf[AnyRef]) }
+      withMdc(logSource, event) {
+        Logger(logClass, logSource).debug(markerIfPresent(event), "{}", message.asInstanceOf[AnyRef])
+      }
 
     case InitializeLogger(_) ⇒
       log.info("Slf4jLogger started")
@@ -100,6 +109,12 @@ class Slf4jLogger extends Actor with SLF4JLogging {
     }
   }
 
+  private final def markerIfPresent(event: LogEvent): Marker =
+    event match {
+      case m: LogEventWithMarker ⇒ MarkerFactory.getMarker(m.marker.name)
+      case _                     ⇒ null
+    }
+
   /**
    * Override this method to provide a differently formatted timestamp
    * @param timestamp a "currentTimeMillis"-obtained timestamp
@@ -112,7 +127,7 @@ class Slf4jLogger extends Actor with SLF4JLogging {
 }
 
 /**
- * [[akka.event.LoggingFilter]] that uses the log level defined in in the SLF4J
+ * [[akka.event.LoggingFilter]] that uses the log level defined in the SLF4J
  * backend configuration (e.g. logback.xml) to filter log events before publishing
  * the log events to the `eventStream`.
  */

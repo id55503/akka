@@ -1,17 +1,17 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.event.slf4j
 
 import language.postfixOps
-
 import akka.testkit.AkkaSpec
-import akka.actor.{ DiagnosticActorLogging, Actor, ActorLogging, Props }
+import akka.actor.{ Actor, DiagnosticActorLogging, Props }
+
 import scala.concurrent.duration._
-import akka.event.Logging
+import akka.event.{ LogMarker, Logging }
 import ch.qos.logback.core.OutputStreamAppender
-import java.io.StringWriter
 import java.io.ByteArrayOutputStream
+
 import org.scalatest.BeforeAndAfterEach
 
 object Slf4jLoggerSpec {
@@ -26,9 +26,12 @@ object Slf4jLoggerSpec {
     }
     """
 
-  case class StringWithMDC(s: String, mdc: Map[String, Any])
+  final case class StringWithMDC(s: String, mdc: Map[String, Any])
+  final case class StringWithMarker(s: String, marker: LogMarker)
 
-  class LogProducer extends Actor with DiagnosticActorLogging {
+  final class LogProducer extends Actor with DiagnosticActorLogging {
+
+    val markLog = Logging.withMarker(this)
 
     def receive = {
       case e: Exception ⇒
@@ -39,6 +42,8 @@ object Slf4jLoggerSpec {
         log.mdc(mdc)
         log.info(s)
         log.clearMDC()
+      case StringWithMarker(s, marker) ⇒
+        markLog.info(marker, s)
     }
   }
 
@@ -57,7 +62,6 @@ object Slf4jLoggerSpec {
 
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class Slf4jLoggerSpec extends AkkaSpec(Slf4jLoggerSpec.config) with BeforeAndAfterEach {
   import Slf4jLoggerSpec._
 
@@ -97,8 +101,17 @@ class Slf4jLoggerSpec extends AkkaSpec(Slf4jLoggerSpec.config) with BeforeAndAft
       s should include("msg=[test x=3 y=17]")
     }
 
+    "log info with marker" in {
+      producer ! StringWithMarker("security-wise interesting message", LogMarker("SECURITY"))
+
+      awaitCond(outputString.contains("----"), 5 seconds)
+      val s = outputString
+      s should include("marker=[SECURITY]")
+      s should include("msg=[security-wise interesting message]")
+    }
+
     "put custom MDC values when specified" in {
-      producer ! StringWithMDC("Message with custom MDC values", Map("ticketNumber" -> 3671, "ticketDesc" -> "Custom MDC Values"))
+      producer ! StringWithMDC("Message with custom MDC values", Map("ticketNumber" → 3671, "ticketDesc" → "Custom MDC Values"))
 
       awaitCond(outputString.contains("----"), 5 seconds)
       val s = outputString
@@ -111,7 +124,7 @@ class Slf4jLoggerSpec extends AkkaSpec(Slf4jLoggerSpec.config) with BeforeAndAft
     }
 
     "Support null values in custom MDC" in {
-      producer ! StringWithMDC("Message with null custom MDC values", Map("ticketNumber" -> 3671, "ticketDesc" -> null))
+      producer ! StringWithMDC("Message with null custom MDC values", Map("ticketNumber" → 3671, "ticketDesc" → null))
 
       awaitCond(outputString.contains("----"), 5 seconds)
       val s = outputString

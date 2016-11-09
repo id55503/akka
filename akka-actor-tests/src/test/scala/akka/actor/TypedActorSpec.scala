@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -20,7 +20,6 @@ import scala.collection.immutable
 import scala.concurrent.duration._
 import scala.concurrent.{ Await, Future, Promise }
 import scala.language.postfixOps
-import scala.util.Random
 
 object TypedActorSpec {
 
@@ -29,12 +28,10 @@ object TypedActorSpec {
       type = "akka.dispatch.BalancingDispatcherConfigurator"
       executor = "thread-pool-executor"
       thread-pool-executor {
-        core-pool-size-min = 60
-        core-pool-size-max = 60
-        max-pool-size-min = 60
-        max-pool-size-max = 60
+        fixed-pool-size = 60
       }
     }
+    akka.actor.serialize-messages = off
     """
 
   class CyclicIterator[T](val items: immutable.Seq[T]) extends Iterator[T] {
@@ -206,7 +203,6 @@ object TypedActorSpec {
   class FI extends F { def f(pow: Boolean): Int = if (pow) throw new IllegalStateException("expected") else 1 }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class TypedActorSpec extends AkkaSpec(TypedActorSpec.config)
   with BeforeAndAfterEach with BeforeAndAfterAll with DefaultTimeout {
 
@@ -517,7 +513,6 @@ class TypedActorSpec extends AkkaSpec(TypedActorSpec.config)
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class TypedActorRouterSpec extends AkkaSpec(TypedActorSpec.config)
   with BeforeAndAfterEach with BeforeAndAfterAll with DefaultTimeout {
 

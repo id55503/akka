@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote.transport
 
@@ -20,14 +20,14 @@ import scala.concurrent.ExecutionContext.Implicits.global
  *
  * The TestTransport is basically a shared memory between actor systems. The TestTransport could be programmed to
  * emulate different failure modes of a Transport implementation. TestTransport keeps a log of the activities it was
- * requested to do. This class is not optimized for performace and MUST not be used as an in-memory transport in
+ * requested to do. This class is not optimized for performance and MUST not be used as an in-memory transport in
  * production systems.
  */
 class TestTransport(
-  val localAddress: Address,
-  final val registry: AssociationRegistry,
-  val maximumPayloadBytes: Int = 32000,
-  val schemeIdentifier: String = "test") extends Transport {
+  val localAddress:        Address,
+  final val registry:      AssociationRegistry,
+  val maximumPayloadBytes: Int                 = 32000,
+  val schemeIdentifier:    String              = "test") extends Transport {
 
   def this(system: ExtendedActorSystem, conf: Config) = {
     this(
@@ -141,12 +141,12 @@ class TestTransport(
    */
   val writeBehavior = new SwitchableLoggedBehavior[(TestAssociationHandle, ByteString), Boolean](
     defaultBehavior = {
-      defaultWrite _
-    },
+    defaultWrite _
+  },
     logCallback = {
-      case (handle, payload) ⇒
-        registry.logActivity(WriteAttempt(handle.localAddress, handle.remoteAddress, payload))
-    })
+    case (handle, payload) ⇒
+      registry.logActivity(WriteAttempt(handle.localAddress, handle.remoteAddress, payload))
+  })
 
   /**
    * The [[akka.remote.transport.TestTransport.SwitchableLoggedBehavior]] for the disassociate() method on handles. All
@@ -154,12 +154,12 @@ class TestTransport(
    */
   val disassociateBehavior = new SwitchableLoggedBehavior[TestAssociationHandle, Unit](
     defaultBehavior = {
-      defaultDisassociate _
-    },
+    defaultDisassociate _
+  },
     logCallback = {
-      (handle) ⇒
-        registry.logActivity(DisassociateAttempt(handle.localAddress, handle.remoteAddress))
-    })
+    (handle) ⇒
+      registry.logActivity(DisassociateAttempt(handle.localAddress, handle.remoteAddress))
+  })
 
   private[akka] def write(handle: TestAssociationHandle, payload: ByteString): Boolean =
     Await.result(writeBehavior((handle, payload)), 3.seconds)
@@ -177,7 +177,7 @@ object TestTransport {
   /**
    * Test utility to make behavior of functions that return some Future[B] controllable from tests. This tool is able
    * to overwrite default behavior with any generic behavior, including failure, and exposes control to the timing of
-   * the completition of the returned future.
+   * the completion of the returned future.
    *
    * The utility is implemented as a stack of behaviors, where the behavior on the top of the stack represents the
    * currently active behavior. The bottom of the stack always contains the defaultBehavior which can not be popped
@@ -299,8 +299,9 @@ object TestTransport {
      * @param listenerPair pair of listeners in initiator, receiver order.
      * @return
      */
-    def remoteListenerRelativeTo(handle: TestAssociationHandle,
-                                 listenerPair: (HandleEventListener, HandleEventListener)): HandleEventListener = {
+    def remoteListenerRelativeTo(
+      handle:       TestAssociationHandle,
+      listenerPair: (HandleEventListener, HandleEventListener)): HandleEventListener = {
       listenerPair match {
         case (initiator, receiver) ⇒ if (handle.inbound) initiator else receiver
       }
@@ -448,10 +449,10 @@ object AssociationRegistry {
 }
 
 final case class TestAssociationHandle(
-  localAddress: Address,
+  localAddress:  Address,
   remoteAddress: Address,
-  transport: TestTransport,
-  inbound: Boolean) extends AssociationHandle {
+  transport:     TestTransport,
+  inbound:       Boolean) extends AssociationHandle {
 
   @volatile var writable = true
 

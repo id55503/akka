@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.dispatcher
 
@@ -10,7 +10,6 @@ import org.scalatest.Matchers
 import akka.testkit.AkkaSpec
 import akka.event.Logging
 import akka.event.LoggingAdapter
-import scala.concurrent.duration._
 import akka.actor._
 import docs.dispatcher.DispatcherDocSpec.MyBoundedActor
 import akka.dispatch.RequiresMessageQueue
@@ -92,6 +91,17 @@ object DispatcherDocSpec {
       throughput = 100
     }
     //#my-thread-pool-dispatcher-config
+
+    //#fixed-pool-size-dispatcher-config
+    blocking-io-dispatcher {
+      type = Dispatcher
+      executor = "thread-pool-executor"
+      thread-pool-executor {
+        fixed-pool-size = 32
+      }
+      throughput = 1
+    }
+    //#fixed-pool-size-dispatcher-config
 
     //#my-pinned-dispatcher-config
     my-pinned-dispatcher {
@@ -268,11 +278,19 @@ class DispatcherDocSpec extends AkkaSpec(DispatcherDocSpec.config) {
     val dispatcher = system.dispatchers.lookup("my-dispatcher-bounded-queue")
   }
 
+  "defining fixed-pool-size dispatcher" in {
+    val context = system
+    //#defining-fixed-pool-size-dispatcher
+    val myActor =
+      context.actorOf(Props[MyActor].withDispatcher("blocking-io-dispatcher"), "myactor2")
+    //#defining-fixed-pool-size-dispatcher
+  }
+
   "defining pinned dispatcher" in {
     val context = system
     //#defining-pinned-dispatcher
     val myActor =
-      context.actorOf(Props[MyActor].withDispatcher("my-pinned-dispatcher"), "myactor2")
+      context.actorOf(Props[MyActor].withDispatcher("my-pinned-dispatcher"), "myactor3")
     //#defining-pinned-dispatcher
   }
 

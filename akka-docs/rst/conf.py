@@ -8,7 +8,7 @@ import sys, os
 # -- General configuration -----------------------------------------------------
 
 sys.path.append(os.path.abspath('../_sphinx/exts'))
-extensions = ['sphinx.ext.todo', 'includecode']
+extensions = ['sphinx.ext.todo', 'includecode', 'includecode2']
 
 templates_path = ['_templates']
 source_suffix = '.rst'
@@ -16,7 +16,7 @@ master_doc = 'index'
 exclude_patterns = ['_build', 'pending', 'disabled']
 
 project = u'Akka'
-copyright = u'2011-2015, Typesafe Inc'
+copyright = u'2011-2016, Lightbend Inc'
 version = '@version@'
 release = '@version@'
 
@@ -54,7 +54,7 @@ html_context = {
 }
 
 # -- Options for EPUB output ---------------------------------------------------
-epub_author = "Typesafe Inc"
+epub_author = "Lightbend Inc"
 epub_language = "en"
 epub_publisher = epub_author
 epub_identifier = "http://doc.akka.io/docs/akka/snapshot/"
@@ -72,9 +72,9 @@ latex_font_size = '10pt'
 
 latex_documents = [
   ('java', 'AkkaJava.tex', u' Akka Java Documentation',
-   u'Typesafe Inc', 'manual'),
+   u'Lightbend Inc', 'manual'),
   ('scala', 'AkkaScala.tex', u' Akka Scala Documentation',
-   u'Typesafe Inc', 'manual'),
+   u'Lightbend Inc', 'manual'),
 ]
 
 latex_elements = {

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.camel.internal
 
@@ -163,7 +163,7 @@ private[camel] class ProducerRegistrar(activationTracker: ActorRef) extends Acto
         try {
           val endpoint = camelContext.getEndpoint(endpointUri)
           val processor = new SendProcessor(endpoint)
-          camelObjects = camelObjects.updated(producer, endpoint -> processor)
+          camelObjects = camelObjects.updated(producer, endpoint → processor)
           // if this throws, the supervisor stops the producer and de-registers it on termination
           processor.start()
           producer ! CamelProducerObjects(endpoint, processor)

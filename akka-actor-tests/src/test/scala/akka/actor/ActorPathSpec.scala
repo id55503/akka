@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.actor
 
@@ -76,5 +76,15 @@ class ActorPathSpec extends WordSpec with Matchers {
       (rootA / "user").toStringWithAddress(b) should ===("akka.tcp://mysys@aaa:2552/user")
       (rootA / "user" / "foo").toStringWithAddress(b) should ===("akka.tcp://mysys@aaa:2552/user/foo")
     }
+
+    "not allow path separators in RootActorPath's name" in {
+      intercept[IllegalArgumentException] {
+        RootActorPath(Address("akka.tcp", "mysys"), "/user/boom/*") // illegally pass in a path where name is expected
+      }.getMessage should include("is a path separator")
+
+      // sanity check that creating such path still works
+      ActorPath.fromString("akka://mysys/user/boom/*")
+    }
+
   }
 }

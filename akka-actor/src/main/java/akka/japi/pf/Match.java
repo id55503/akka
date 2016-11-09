@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.japi.pf;
@@ -70,7 +70,7 @@ public class Match<I, R> extends AbstractMatch<I, R> {
    * @return a builder with the case statement added
    * @see PFBuilder#matchAny(FI.Apply)
    */
-  public static <F, T> PFBuilder<F, T> matchAny(final FI.Apply<Object, T> apply) {
+  public static <F, T> PFBuilder<F, T> matchAny(final FI.Apply<F, T> apply) {
     return new PFBuilder<F, T>().matchAny(apply);
   }
 

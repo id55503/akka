@@ -1,37 +1,42 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.persistence
 
-import scala.collection.immutable.Seq
-import scala.concurrent.duration._
-import com.typesafe.config.Config
-import akka.actor._
-import akka.testkit.{ ImplicitSender, AkkaSpec }
-import akka.testkit.EventFilter
-import akka.testkit.TestProbe
 import java.util.concurrent.atomic.AtomicInteger
+
+import akka.actor._
+import akka.testkit.{ ImplicitSender, TestLatch, TestProbe }
+import com.typesafe.config.Config
+
+import scala.collection.immutable.Seq
+import scala.concurrent.Await
+import scala.concurrent.duration._
 import scala.util.Random
 import scala.util.control.NoStackTrace
-import akka.testkit.TestLatch
-import scala.concurrent.Await
 
 object PersistentActorSpec {
   final case class Cmd(data: Any)
   final case class Evt(data: Any)
   final case class LatchCmd(latch: TestLatch, data: Any) extends NoSerializationVerificationNeeded
+  final case class Delete(toSequenceNr: Long)
 
-  abstract class ExamplePersistentActor(name: String) extends NamedPersistentActor(name) with PersistentActor {
+  abstract class ExamplePersistentActor(name: String) extends NamedPersistentActor(name) {
     var events: List[Any] = Nil
+    var askedForDelete: Option[ActorRef] = None
 
     val updateState: Receive = {
-      case Evt(data) ⇒ events = data :: events
+      case Evt(data)               ⇒ events = data :: events
+      case d @ Some(ref: ActorRef) ⇒ askedForDelete = d.asInstanceOf[Some[ActorRef]]
     }
 
     val commonBehavior: Receive = {
       case "boom"   ⇒ throw new TestException("boom")
       case GetState ⇒ sender() ! events.reverse
+      case Delete(toSequenceNr) ⇒
+        persist(Some(sender())) { s ⇒ askedForDelete = s }
+        deleteMessages(toSequenceNr)
     }
 
     def receiveRecover = updateState
@@ -40,22 +45,36 @@ object PersistentActorSpec {
   class Behavior1PersistentActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = commonBehavior orElse {
       case Cmd(data) ⇒
-        persist(Seq(Evt(s"${data}-1"), Evt(s"${data}-2")))(updateState)
+        persistAll(Seq(Evt(s"${data}-1"), Evt(s"${data}-2")))(updateState)
+      case d: DeleteMessagesSuccess ⇒
+        val replyTo = askedForDelete.getOrElse(throw new RuntimeException("Received DeleteMessagesSuccess without anyone asking for delete!"))
+        replyTo ! d
     }
+
+    override protected def onPersistRejected(cause: Throwable, event: Any, seqNr: Long): Unit =
+      event match {
+        case Evt(data) ⇒ sender() ! s"Rejected: $data"
+        case _         ⇒ super.onPersistRejected(cause, event, seqNr)
+      }
+    override protected def onPersistFailure(cause: Throwable, event: Any, seqNr: Long): Unit =
+      event match {
+        case Evt(data) ⇒ sender() ! s"Failure: $data"
+        case _         ⇒ super.onPersistFailure(cause, event, seqNr)
+      }
   }
 
   class Behavior2PersistentActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = commonBehavior orElse {
       case Cmd(data) ⇒
-        persist(Seq(Evt(s"${data}-1"), Evt(s"${data}-2")))(updateState)
-        persist(Seq(Evt(s"${data}-3"), Evt(s"${data}-4")))(updateState)
+        persistAll(Seq(Evt(s"${data}-1"), Evt(s"${data}-2")))(updateState)
+        persistAll(Seq(Evt(s"${data}-3"), Evt(s"${data}-4")))(updateState)
     }
   }
 
   class Behavior3PersistentActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = commonBehavior orElse {
       case Cmd(data) ⇒
-        persist(Seq(Evt(s"${data}-11"), Evt(s"${data}-12")))(updateState)
+        persistAll(Seq(Evt(s"${data}-11"), Evt(s"${data}-12")))(updateState)
         updateState(Evt(s"${data}-10"))
     }
   }
@@ -102,7 +121,7 @@ object PersistentActorSpec {
     val newBehavior: Receive = {
       case Cmd(data) ⇒
         context.unbecome()
-        persist(Seq(Evt(s"${data}-31"), Evt(s"${data}-32")))(updateState)
+        persistAll(Seq(Evt(s"${data}-31"), Evt(s"${data}-32")))(updateState)
         updateState(Evt(s"${data}-30"))
     }
 
@@ -116,7 +135,7 @@ object PersistentActorSpec {
   class ChangeBehaviorInCommandHandlerLastPersistentActor(name: String) extends ExamplePersistentActor(name) {
     val newBehavior: Receive = {
       case Cmd(data) ⇒
-        persist(Seq(Evt(s"${data}-31"), Evt(s"${data}-32")))(updateState)
+        persistAll(Seq(Evt(s"${data}-31"), Evt(s"${data}-32")))(updateState)
         updateState(Evt(s"${data}-30"))
         context.unbecome()
     }
@@ -136,7 +155,7 @@ object PersistentActorSpec {
     }
 
     private def handleCmd(cmd: Cmd): Unit = {
-      persist(Seq(Evt(s"${cmd.data}-41"), Evt(s"${cmd.data}-42")))(updateState)
+      persistAll(Seq(Evt(s"${cmd.data}-41"), Evt(s"${cmd.data}-42")))(updateState)
     }
 
     def receiveCommand: Receive = commonBehavior orElse {
@@ -169,35 +188,6 @@ object PersistentActorSpec {
     }
   }
 
-  class UserStashPersistentActor(name: String) extends ExamplePersistentActor(name) {
-    var stashed = false
-    val receiveCommand: Receive = {
-      case Cmd("a") ⇒ if (!stashed) { stash(); stashed = true } else sender() ! "a"
-      case Cmd("b") ⇒ persist(Evt("b"))(evt ⇒ sender() ! evt.data)
-      case Cmd("c") ⇒ unstashAll(); sender() ! "c"
-    }
-  }
-
-  class UserStashManyPersistentActor(name: String) extends ExamplePersistentActor(name) {
-    val receiveCommand: Receive = commonBehavior orElse {
-      case Cmd("a") ⇒ persist(Evt("a")) { evt ⇒
-        updateState(evt)
-        context.become(processC)
-      }
-      case Cmd("b-1") ⇒ persist(Evt("b-1"))(updateState)
-      case Cmd("b-2") ⇒ persist(Evt("b-2"))(updateState)
-    }
-
-    val processC: Receive = {
-      case Cmd("c") ⇒
-        persist(Evt("c")) { evt ⇒
-          updateState(evt)
-          context.unbecome()
-        }
-        unstashAll()
-      case other ⇒ stash()
-    }
-  }
   class AsyncPersistPersistentActor(name: String) extends ExamplePersistentActor(name) {
     var counter = 0
 
@@ -213,6 +203,13 @@ object PersistentActorSpec {
       counter += 1
       counter
     }
+
+    override protected def onPersistFailure(cause: Throwable, event: Any, seqNr: Long): Unit =
+      event match {
+        case Evt(data) ⇒ sender() ! s"Failure: $data"
+        case _         ⇒ super.onPersistFailure(cause, event, seqNr)
+      }
+
   }
   class AsyncPersistThreeTimesPersistentActor(name: String) extends ExamplePersistentActor(name) {
     var counter = 0
@@ -249,6 +246,22 @@ object PersistentActorSpec {
           sender() ! s"${evt.data}-a-${sendMsgCounter.incrementAndGet()}"
         }
         persistAsync(event) { evt ⇒ sender() ! s"${evt.data}-b-${sendMsgCounter.incrementAndGet()}" }
+    }
+  }
+  class PersistAllNilPersistentActor(name: String) extends ExamplePersistentActor(name) {
+
+    val receiveCommand: Receive = commonBehavior orElse {
+      case Cmd(data: String) if data contains "defer" ⇒
+        deferAsync("before-nil")(sender() ! _)
+        persistAll(Nil)(_ ⇒ sender() ! "Nil")
+        deferAsync("after-nil")(sender() ! _)
+        sender() ! data
+
+      case Cmd(data: String) if data contains "persist" ⇒
+        persist("before-nil")(sender() ! _)
+        persistAll(Nil)(_ ⇒ sender() ! "Nil")
+        deferAsync("after-nil")(sender() ! _)
+        sender() ! data
     }
   }
   class AsyncPersistAndPersistMixedSyncAsyncSyncPersistentActor(name: String) extends ExamplePersistentActor(name) {
@@ -320,27 +333,6 @@ object PersistentActorSpec {
     }
   }
 
-  class UserStashFailurePersistentActor(name: String) extends ExamplePersistentActor(name) {
-    val receiveCommand: Receive = commonBehavior orElse {
-      case Cmd(data) ⇒
-        if (data == "b-2") throw new TestException("boom")
-        persist(Evt(data)) { event ⇒
-          updateState(event)
-          if (data == "a") context.become(otherCommandHandler)
-        }
-    }
-
-    val otherCommandHandler: Receive = {
-      case Cmd("c") ⇒
-        persist(Evt("c")) { event ⇒
-          updateState(event)
-          context.unbecome()
-        }
-        unstashAll()
-      case other ⇒ stash()
-    }
-  }
-
   class AnyValEventPersistentActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = {
       case Cmd("a") ⇒ persist(5)(evt ⇒ sender() ! evt)
@@ -370,19 +362,19 @@ object PersistentActorSpec {
   class DeferringWithPersistActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = {
       case Cmd(data) ⇒
-        defer("d-1") { sender() ! _ }
+        deferAsync("d-1") { sender() ! _ }
         persist(s"$data-2") { sender() ! _ }
-        defer("d-3") { sender() ! _ }
-        defer("d-4") { sender() ! _ }
+        deferAsync("d-3") { sender() ! _ }
+        deferAsync("d-4") { sender() ! _ }
     }
   }
   class DeferringWithAsyncPersistActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = {
       case Cmd(data) ⇒
-        defer(s"d-$data-1") { sender() ! _ }
+        deferAsync(s"d-$data-1") { sender() ! _ }
         persistAsync(s"pa-$data-2") { sender() ! _ }
-        defer(s"d-$data-3") { sender() ! _ }
-        defer(s"d-$data-4") { sender() ! _ }
+        deferAsync(s"d-$data-3") { sender() ! _ }
+        deferAsync(s"d-$data-4") { sender() ! _ }
     }
   }
   class DeferringMixedCallsPPADDPADPersistActor(name: String) extends ExamplePersistentActor(name) {
@@ -390,18 +382,18 @@ object PersistentActorSpec {
       case Cmd(data) ⇒
         persist(s"p-$data-1") { sender() ! _ }
         persistAsync(s"pa-$data-2") { sender() ! _ }
-        defer(s"d-$data-3") { sender() ! _ }
-        defer(s"d-$data-4") { sender() ! _ }
+        deferAsync(s"d-$data-3") { sender() ! _ }
+        deferAsync(s"d-$data-4") { sender() ! _ }
         persistAsync(s"pa-$data-5") { sender() ! _ }
-        defer(s"d-$data-6") { sender() ! _ }
+        deferAsync(s"d-$data-6") { sender() ! _ }
     }
   }
   class DeferringWithNoPersistCallsPersistActor(name: String) extends ExamplePersistentActor(name) {
     val receiveCommand: Receive = {
       case Cmd(data) ⇒
-        defer("d-1") { sender() ! _ }
-        defer("d-2") { sender() ! _ }
-        defer("d-3") { sender() ! _ }
+        deferAsync("d-1") { sender() ! _ }
+        deferAsync("d-2") { sender() ! _ }
+        deferAsync("d-3") { sender() ! _ }
     }
   }
 
@@ -416,6 +408,130 @@ object PersistentActorSpec {
         persist(data)(_ ⇒ ())
       case s: String ⇒
         sender() ! s
+    }
+  }
+
+  class MultipleAndNestedPersists(name: String, probe: ActorRef) extends ExamplePersistentActor(name) {
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persist(s + "-outer-1") { outer ⇒
+          probe ! outer
+          persist(s + "-inner-1") { inner ⇒ probe ! inner }
+        }
+        persist(s + "-outer-2") { outer ⇒
+          probe ! outer
+          persist(s + "-inner-2") { inner ⇒ probe ! inner }
+        }
+    }
+  }
+  class MultipleAndNestedPersistAsyncs(name: String, probe: ActorRef) extends ExamplePersistentActor(name) {
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persistAsync(s + "-outer-1") { outer ⇒
+          probe ! outer
+          persistAsync(s + "-inner-1") { inner ⇒ probe ! inner }
+        }
+        persistAsync(s + "-outer-2") { outer ⇒
+          probe ! outer
+          persistAsync(s + "-inner-2") { inner ⇒ probe ! inner }
+        }
+    }
+  }
+  class DeeplyNestedPersistAsyncs(name: String, maxDepth: Int, probe: ActorRef) extends ExamplePersistentActor(name) {
+    var currentDepths = Map.empty[String, Int].withDefaultValue(1)
+
+    def weMustGoDeeper: String ⇒ Unit = { dWithDepth ⇒
+      val d = dWithDepth.split("-").head
+      probe ! dWithDepth
+      if (currentDepths(d) < maxDepth) {
+        currentDepths = currentDepths.updated(d, currentDepths(d) + 1)
+        persistAsync(d + "-" + currentDepths(d))(weMustGoDeeper)
+      } else {
+        // reset depth counter before next command
+        currentDepths = currentDepths.updated(d, 1)
+      }
+    }
+
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persistAsync(s + "-" + 1)(weMustGoDeeper)
+    }
+  }
+
+  class NestedPersistNormalAndAsyncs(name: String, probe: ActorRef) extends ExamplePersistentActor(name) {
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persist(s + "-outer-1") { outer ⇒
+          probe ! outer
+          persistAsync(s + "-inner-async-1") { inner ⇒
+            probe ! inner
+          }
+        }
+        persist(s + "-outer-2") { outer ⇒
+          probe ! outer
+          persistAsync(s + "-inner-async-2") { inner ⇒
+            probe ! inner
+          }
+        }
+    }
+  }
+  class NestedPersistAsyncsAndNormal(name: String, probe: ActorRef) extends ExamplePersistentActor(name) {
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persistAsync(s + "-outer-async-1") { outer ⇒
+          probe ! outer
+          persist(s + "-inner-1") { inner ⇒
+            probe ! inner
+          }
+        }
+        persistAsync(s + "-outer-async-2") { outer ⇒
+          probe ! outer
+          persist(s + "-inner-2") { inner ⇒
+            probe ! inner
+          }
+        }
+    }
+  }
+  class NestedPersistInAsyncEnforcesStashing(name: String, probe: ActorRef) extends ExamplePersistentActor(name) {
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persistAsync(s + "-outer-async") { outer ⇒
+          probe ! outer
+          persist(s + "-inner") { inner ⇒
+            probe ! inner
+            Thread.sleep(1000) // really long wait here...
+            // the next incoming command must be handled by the following function
+            context.become({ case _ ⇒ sender() ! "done" })
+          }
+        }
+    }
+  }
+
+  class DeeplyNestedPersists(name: String, maxDepth: Int, probe: ActorRef) extends ExamplePersistentActor(name) {
+    var currentDepths = Map.empty[String, Int].withDefaultValue(1)
+
+    def weMustGoDeeper: String ⇒ Unit = { dWithDepth ⇒
+      val d = dWithDepth.split("-").head
+      probe ! dWithDepth
+      if (currentDepths(d) < maxDepth) {
+        currentDepths = currentDepths.updated(d, currentDepths(d) + 1)
+        persist(d + "-" + currentDepths(d))(weMustGoDeeper)
+      } else {
+        // reset depth counter before next command
+        currentDepths = currentDepths.updated(d, 1)
+      }
+    }
+
+    val receiveCommand: Receive = {
+      case s: String ⇒
+        probe ! s
+        persist(s + "-" + 1)(weMustGoDeeper)
     }
   }
 
@@ -510,7 +626,7 @@ object PersistentActorSpec {
 
 }
 
-abstract class PersistentActorSpec(config: Config) extends AkkaSpec(config) with PersistenceSpec with ImplicitSender {
+abstract class PersistentActorSpec(config: Config) extends PersistenceSpec(config) with ImplicitSender {
   import PersistentActorSpec._
 
   override protected def beforeEach() {
@@ -626,34 +742,6 @@ abstract class PersistentActorSpec(config: Config) extends AkkaSpec(config) with
       persistentActor ! Cmd("a")
       expectMsg("a")
     }
-    "support user stash operations" in {
-      val persistentActor = namedPersistentActor[UserStashPersistentActor]
-      persistentActor ! Cmd("a")
-      persistentActor ! Cmd("b")
-      persistentActor ! Cmd("c")
-      expectMsg("b")
-      expectMsg("c")
-      expectMsg("a")
-    }
-    "support user stash operations with several stashed messages" in {
-      val persistentActor = namedPersistentActor[UserStashManyPersistentActor]
-      val n = 10
-      val cmds = 1 to n flatMap (_ ⇒ List(Cmd("a"), Cmd("b-1"), Cmd("b-2"), Cmd("c")))
-      val evts = 1 to n flatMap (_ ⇒ List("a", "c", "b-1", "b-2"))
-
-      cmds foreach (persistentActor ! _)
-      persistentActor ! GetState
-      expectMsg((List("a-1", "a-2") ++ evts))
-    }
-    "support user stash operations under failures" in {
-      val persistentActor = namedPersistentActor[UserStashFailurePersistentActor]
-      val bs = 1 to 10 map ("b-" + _)
-      persistentActor ! Cmd("a")
-      bs foreach (persistentActor ! Cmd(_))
-      persistentActor ! Cmd("c")
-      persistentActor ! GetState
-      expectMsg(List("a-1", "a-2", "a", "c") ++ bs.filter(_ != "b-2"))
-    }
     "be able to persist events that extend AnyVal" in {
       val persistentActor = namedPersistentActor[AnyValEventPersistentActor]
       persistentActor ! Cmd("a")
@@ -712,6 +800,17 @@ abstract class PersistentActorSpec(config: Config) extends AkkaSpec(config) with
       expectMsg("x-a-1")
       expectMsg("x-b-2")
       expectNoMsg(100.millis)
+    }
+    "support calling persistAll with Nil" in {
+      val persistentActor = namedPersistentActor[PersistAllNilPersistentActor]
+      persistentActor ! Cmd("defer-x")
+      expectMsg("before-nil")
+      expectMsg("after-nil")
+      expectMsg("defer-x")
+      persistentActor ! Cmd("persist-x")
+      expectMsg("persist-x")
+      expectMsg("before-nil")
+      expectMsg("after-nil")
     }
     "support a mix of persist calls (sync, async, sync) and persist calls in expected order" in {
       val persistentActor = namedPersistentActor[AsyncPersistAndPersistMixedSyncAsyncSyncPersistentActor]
@@ -885,6 +984,112 @@ abstract class PersistentActorSpec(config: Config) extends AkkaSpec(config) with
       expectMsg("postStop")
 
       expectNoMsg(100.millis)
+    }
+    "allow multiple persists with nested persist calls" in {
+      val persistentActor = system.actorOf(Props(classOf[MultipleAndNestedPersists], name, testActor))
+      persistentActor ! "a"
+      persistentActor ! "b"
+
+      expectMsg("a")
+      expectMsg("a-outer-1")
+      expectMsg("a-outer-2")
+      expectMsg("a-inner-1")
+      expectMsg("a-inner-2")
+      // and only then process "b"
+      expectMsg("b")
+      expectMsg("b-outer-1")
+      expectMsg("b-outer-2")
+      expectMsg("b-inner-1")
+      expectMsg("b-inner-2")
+    }
+    "allow multiple persistAsyncs with nested persistAsync calls" in {
+      val persistentActor = system.actorOf(Props(classOf[MultipleAndNestedPersistAsyncs], name, testActor))
+      persistentActor ! "a"
+      persistentActor ! "b"
+
+      val msgs = receiveN(10).map(_.toString)
+      val as = msgs.filter(_ startsWith "a")
+      val bs = msgs.filter(_ startsWith "b")
+      as should equal(List("a", "a-outer-1", "a-outer-2", "a-inner-1", "a-inner-2"))
+      bs should equal(List("b", "b-outer-1", "b-outer-2", "b-inner-1", "b-inner-2"))
+    }
+    "allow deeply nested persist calls" in {
+      val nestedPersists = 6
+
+      val persistentActor = system.actorOf(Props(classOf[DeeplyNestedPersists], name, nestedPersists, testActor))
+      persistentActor ! "a"
+      persistentActor ! "b"
+
+      expectMsg("a")
+      receiveN(6) should ===((1 to nestedPersists).map("a-" + _))
+      // and only then process "b"
+      expectMsg("b")
+      receiveN(6) should ===((1 to nestedPersists).map("b-" + _))
+    }
+    "allow deeply nested persistAsync calls" in {
+      val nestedPersistAsyncs = 6
+
+      val persistentActor = system.actorOf(Props(classOf[DeeplyNestedPersistAsyncs], name, nestedPersistAsyncs, testActor))
+
+      persistentActor ! "a"
+      expectMsg("a")
+      val got = receiveN(nestedPersistAsyncs)
+      got should beIndependentlyOrdered("a-")
+
+      persistentActor ! "b"
+      persistentActor ! "c"
+      val expectedReplies = 2 + (nestedPersistAsyncs * 2)
+      receiveN(expectedReplies).map(_.toString) should beIndependentlyOrdered("b-", "c-")
+    }
+    "allow mixed nesting of persistAsync in persist calls" in {
+      val persistentActor = system.actorOf(Props(classOf[NestedPersistNormalAndAsyncs], name, testActor))
+      persistentActor ! "a"
+
+      expectMsg("a")
+      receiveN(4) should equal(List("a-outer-1", "a-outer-2", "a-inner-async-1", "a-inner-async-2"))
+    }
+    "allow mixed nesting of persist in persistAsync calls" in {
+      val persistentActor = system.actorOf(Props(classOf[NestedPersistAsyncsAndNormal], name, testActor))
+      persistentActor ! "a"
+
+      expectMsg("a")
+      receiveN(4) should equal(List("a-outer-async-1", "a-outer-async-2", "a-inner-1", "a-inner-2"))
+    }
+    "make sure persist retains promised semantics when nested in persistAsync callback" in {
+      val persistentActor = system.actorOf(Props(classOf[NestedPersistInAsyncEnforcesStashing], name, testActor))
+      persistentActor ! "a"
+
+      expectMsg("a")
+      expectMsg("a-outer-async")
+      expectMsg("a-inner")
+      persistentActor ! "b"
+      expectMsg("done")
+      // which means that b only got applied after the inner persist() handler finished
+      // so it keeps the persist() semantics, even though we should not recommend this style it can come in handy I guess
+    }
+
+    "be able to delete events" in {
+      val persistentActor = namedPersistentActor[Behavior1PersistentActor]
+      persistentActor ! Cmd("b")
+      persistentActor ! GetState
+      expectMsg(List("a-1", "a-2", "b-1", "b-2"))
+      persistentActor ! Delete(2L) // delete "a-1" and "a-2"
+      persistentActor ! "boom" // restart, recover
+      expectMsgType[DeleteMessagesSuccess]
+      persistentActor ! GetState
+      expectMsg(List("b-1", "b-2"))
+    }
+
+    "be able to delete all events" in {
+      val persistentActor = namedPersistentActor[Behavior1PersistentActor]
+      persistentActor ! Cmd("b")
+      persistentActor ! GetState
+      expectMsg(List("a-1", "a-2", "b-1", "b-2"))
+      persistentActor ! Delete(Long.MaxValue)
+      persistentActor ! "boom" // restart, recover
+      expectMsgType[DeleteMessagesSuccess]
+      persistentActor ! GetState
+      expectMsg(Nil)
     }
 
   }

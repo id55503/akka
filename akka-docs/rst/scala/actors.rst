@@ -78,8 +78,13 @@ explained below.
 The last line shows a possibility to pass constructor arguments regardless of
 the context it is being used in. The presence of a matching constructor is
 verified during construction of the :class:`Props` object, resulting in an
-:class:`IllegalArgumentEception` if no or multiple matching constructors are
+:class:`IllegalArgumentException` if no or multiple matching constructors are
 found.
+
+.. note::
+
+  The recommended approach to create the actor :class:`Props` is not supported
+  for cases when the actor constructor takes value classes as arguments.
 
 Dangerous Variants
 ^^^^^^^^^^^^^^^^^^
@@ -107,6 +112,25 @@ reference needs to be passed as the first argument).
 
   Declaring one actor within another is very dangerous and breaks actor
   encapsulation. Never pass an actor’s ``this`` reference into :class:`Props`!
+
+Edge cases
+^^^^^^^^^^
+There are two edge cases in actor creation with :class:`Props`:
+
+* An actor with :class:`AnyVal` arguments.
+
+.. includecode:: code/docs/actor/PropsEdgeCaseSpec.scala#props-edge-cases-value-class
+.. includecode:: code/docs/actor/PropsEdgeCaseSpec.scala#props-edge-cases-value-class-example
+
+* An actor with default constructor values.
+
+.. includecode:: code/docs/actor/PropsEdgeCaseSpec.scala#props-edge-cases-default-values
+
+In both cases an :class:`IllegalArgumentException` will be thrown stating
+no matching constructor could be found.
+
+The next section explains the recommended ways to create :class:`Actor` props in a way,
+which simultaneously safe-guards against these edge cases.
 
 Recommended Practices
 ^^^^^^^^^^^^^^^^^^^^^
@@ -162,6 +186,18 @@ another child to the same parent an :class:`InvalidActorNameException` is thrown
 
 Actors are automatically started asynchronously when created.
 
+Value classes as constructor arguments
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The recommended way to instantiate actor props uses reflection at runtime
+to determine the correct actor constructor to be invoked and due to technical
+limitations is not supported when said constructor takes arguments that are
+value classes.
+In these cases you should either unpack the arguments or create the props by
+calling the constructor manually:
+
+.. includecode:: code/docs/actor/ActorDocSpec.scala#actor-with-value-class-argument
+
 Dependency Injection
 --------------------
 
@@ -189,8 +225,8 @@ __ Props_
 Techniques for dependency injection and integration with dependency injection frameworks
 are described in more depth in the 
 `Using Akka with Dependency Injection <http://letitcrash.com/post/55958814293/akka-dependency-injection>`_ 
-guideline and the `Akka Java Spring <http://www.typesafe.com/activator/template/akka-java-spring>`_ tutorial
-in Typesafe Activator.
+guideline and the `Akka Java Spring <http://www.lightbend.com/activator/template/akka-java-spring>`_ tutorial
+in Lightbend Activator.
 
 The Inbox
 ---------
@@ -283,7 +319,15 @@ that point the appropriate lifecycle events are called and watching actors
 are notified of the termination. After the incarnation is stopped, the path can
 be reused again by creating an actor with ``actorOf()``. In this case the
 name of the new incarnation will be the same as the previous one but the
-UIDs will differ.
+UIDs will differ. An actor can be stopped by the actor itself, another actor
+or the ``ActorSystem`` (see :ref:`stopping-actors-scala`).
+
+.. note::
+
+   It is important to note that Actors do not stop automatically when no longer
+   referenced, every Actor that is created must also explicitly be destroyed.
+   The only simplification is that stopping a parent Actor will also recursively
+   stop all the child Actors that this parent has created.
 
 An ``ActorRef`` always represents an incarnation (path and UID) not just a
 given path. Therefore if an actor is stopped and a new one with the same
@@ -426,7 +470,7 @@ result:
   It is always preferable to communicate with other Actors using their ActorRef
   instead of relying upon ActorSelection. Exceptions are
 
-    * sending messages using the :ref:`at-least-once-delivery` facility
+    * sending messages using the :ref:`at-least-once-delivery-scala` facility
     * initiating first contact with a remote system
 
   In all other cases ActorRefs can be provided during Actor creation or
@@ -532,6 +576,8 @@ to reply to the original sender, by using ``sender() ! replyMsg``.
 If invoked from an instance that is **not** an Actor the sender will be
 :obj:`deadLetters` actor reference by default.
 
+.. _actors-ask-scala:
+
 Ask: Send-And-Receive-Future
 ----------------------------
 
@@ -577,8 +623,8 @@ See :ref:`futures-scala` for more information on how to await or query a
 future.
 
 The ``onComplete``, ``onSuccess``, or ``onFailure`` methods of the ``Future`` can be
-used to register a callback to get a notification when the Future completes.
-Gives you a way to avoid blocking.
+used to register a callback to get a notification when the Future completes, giving
+you a way to avoid blocking.
 
 .. warning::
 
@@ -651,6 +697,10 @@ periods). Pass in `Duration.Undefined` to switch off this feature.
 
 .. includecode:: code/docs/actor/ActorDocSpec.scala#receive-timeout
 
+Messages marked with ``NotInfluenceReceiveTimeout`` will not reset the timer. This can be useful when
+``ReceiveTimeout`` should be fired by external inactivity but not influenced by internal activity,
+e.g. scheduled tick messages.
+
 .. _stopping-actors-scala:
 
 Stopping actors
@@ -658,9 +708,11 @@ Stopping actors
 
 Actors are stopped by invoking the :meth:`stop` method of a ``ActorRefFactory``,
 i.e. ``ActorContext`` or ``ActorSystem``. Typically the context is used for stopping
-child actors and the system for stopping top level actors. The actual termination of
-the actor is performed asynchronously, i.e. :meth:`stop` may return before the actor is
-stopped.
+the actor itself or child actors and the system for stopping top level actors. The actual
+termination of the actor is performed asynchronously, i.e. :meth:`stop` may return before
+the actor is stopped.
+
+.. includecode:: code/docs/actor/ActorDocSpec.scala#stoppingActors-actor
 
 Processing of the current message, if any, will continue before the actor is stopped,
 but additional messages in the mailbox will not be processed. By default these
@@ -763,7 +815,7 @@ Hakkers`_). It will replace the current behavior (i.e. the top of the behavior
 stack), which means that you do not use :meth:`unbecome`, instead always the
 next behavior is explicitly installed.
 
-.. _Dining Hakkers: http://www.typesafe.com/activator/template/akka-sample-fsm-scala
+.. _Dining Hakkers: http://www.lightbend.com/activator/template/akka-sample-fsm-scala
 
 The other way of using :meth:`become` does not replace but add to the top of
 the behavior stack. In this case care must be taken to ensure that the number
@@ -778,6 +830,7 @@ Encoding Scala Actors nested receives without accidentally leaking memory
 
 See this `Unnested receive example <@github@/akka-docs/rst/scala/code/docs/actor/UnnestedReceives.scala>`_.
 
+.. _stash-scala:
 
 Stash
 =====
@@ -938,7 +991,7 @@ Initialization via preStart
 
 The method ``preStart()`` of an actor is only called once directly during the initialization of the first instance, that
 is, at creation of its ``ActorRef``. In the case of restarts, ``preStart()`` is called from ``postRestart()``, therefore
-if not overridden, ``preStart()`` is called on every incarnation. However, overriding ``postRestart()`` one can disable
+if not overridden, ``preStart()`` is called on every incarnation. However, by overriding ``postRestart()`` one can disable
 this behavior, and ensure that there is only one call to ``preStart()``.
 
 One useful usage of this pattern is to disable creation of new ``ActorRefs`` for children during restarts. This can be

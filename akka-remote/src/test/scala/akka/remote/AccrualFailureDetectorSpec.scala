@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.remote
@@ -9,7 +9,6 @@ import scala.collection.immutable.TreeMap
 import scala.concurrent.duration._
 import akka.remote.FailureDetector.Clock
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class AccrualFailureDetectorSpec extends AkkaSpec("akka.loglevel = INFO") {
 
   "An AccrualFailureDetector" must {
@@ -24,12 +23,12 @@ class AccrualFailureDetectorSpec extends AkkaSpec("akka.loglevel = INFO") {
     }
 
     def createFailureDetector(
-      threshold: Double = 8.0,
-      maxSampleSize: Int = 1000,
-      minStdDeviation: FiniteDuration = 100.millis,
+      threshold:              Double         = 8.0,
+      maxSampleSize:          Int            = 1000,
+      minStdDeviation:        FiniteDuration = 100.millis,
       acceptableLostDuration: FiniteDuration = Duration.Zero,
       firstHeartbeatEstimate: FiniteDuration = 1.second,
-      clock: Clock = FailureDetector.defaultClock) =
+      clock:                  Clock          = FailureDetector.defaultClock) =
       new PhiAccrualFailureDetector(
         threshold,
         maxSampleSize,
@@ -64,7 +63,7 @@ class AccrualFailureDetectorSpec extends AkkaSpec("akka.loglevel = INFO") {
 
     "return realistic phi values" in {
       val fd = createFailureDetector()
-      val test = TreeMap(0 -> 0.0, 500 -> 0.1, 1000 -> 0.3, 1200 -> 1.6, 1400 -> 4.7, 1600 -> 10.8, 1700 -> 15.3)
+      val test = TreeMap(0 → 0.0, 500 → 0.1, 1000 → 0.3, 1200 → 1.6, 1400 → 4.7, 1600 → 10.8, 1700 → 15.3)
       for ((timeDiff, expectedPhi) ← test) {
         fd.phi(timeDiff = timeDiff, mean = 1000.0, stdDeviation = 100.0) should ===(expectedPhi +- (0.1))
       }
@@ -82,7 +81,8 @@ class AccrualFailureDetectorSpec extends AkkaSpec("akka.loglevel = INFO") {
 
     "return phi based on guess when only one heartbeat" in {
       val timeInterval = List[Long](0, 1000, 1000, 1000, 1000)
-      val fd = createFailureDetector(firstHeartbeatEstimate = 1.seconds,
+      val fd = createFailureDetector(
+        firstHeartbeatEstimate = 1.seconds,
         clock = fakeTimeGenerator(timeInterval))
 
       fd.heartbeat()
@@ -188,7 +188,7 @@ class AccrualFailureDetectorSpec extends AkkaSpec("akka.loglevel = INFO") {
       fd.heartbeat() //2000
       fd.heartbeat() //2500
       val phi2 = fd.phi //3000
-      phi2 should ===(phi1.plusOrMinus(0.001))
+      phi2 should ===(phi1 +- (0.001))
     }
 
   }

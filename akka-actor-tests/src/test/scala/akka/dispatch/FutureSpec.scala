@@ -76,7 +76,6 @@ object FutureSpec {
 
 class JavaFutureSpec extends JavaFutureTests with JUnitSuiteLike
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class FutureSpec extends AkkaSpec with Checkers with BeforeAndAfterAll with DefaultTimeout {
   import FutureSpec._
   implicit val ec: ExecutionContext = system.dispatcher
@@ -539,7 +538,7 @@ class FutureSpec extends AkkaSpec with Checkers with BeforeAndAfterAll with Defa
         latch.open()
         assert(Await.result(f2, timeout.duration) === 10)
 
-        val f3 = Future { Thread.sleep(100); 5 }
+        val f3 = Promise[Int]().future
         filterException[TimeoutException] { intercept[TimeoutException] { FutureSpec.ready(f3, 0 millis) } }
       }
 
@@ -720,7 +719,14 @@ class FutureSpec extends AkkaSpec with Checkers with BeforeAndAfterAll with Defa
         Await.result(p.future, timeout.duration) should ===(message)
       }
     }
-    "always cast successfully using mapTo" in { f((future, message) ⇒ (evaluating { Await.result(future.mapTo[java.lang.Thread], timeout.duration) } should produce[java.lang.Exception]).getMessage should ===(message)) }
+    "always cast successfully using mapTo" in {
+      f((future, message) ⇒ {
+        val exception = the[java.lang.Exception] thrownBy {
+          Await.result(future.mapTo[java.lang.Thread], timeout.duration)
+        }
+        exception.getMessage should ===(message)
+      })
+    }
   }
 
   implicit def arbFuture: Arbitrary[Future[Int]] = Arbitrary(for (n ← arbitrary[Int]) yield Future(n))

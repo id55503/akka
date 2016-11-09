@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.contrib.jul
 
@@ -8,6 +8,8 @@ import akka.actor._
 import akka.event.LoggingAdapter
 import java.util.logging
 import scala.concurrent.{ ExecutionContext, Future }
+import akka.dispatch.RequiresMessageQueue
+import akka.event.LoggerMessageQueueSemantics
 
 /**
  * Makes the Akka `Logging` API available as the `log`
@@ -30,7 +32,7 @@ trait JavaLogging {
 /**
  * `java.util.logging` logger.
  */
-class JavaLogger extends Actor {
+class JavaLogger extends Actor with RequiresMessageQueue[LoggerMessageQueueSemantics] {
 
   def receive = {
     case event @ Error(cause, _, _, _) ⇒ log(logging.Level.SEVERE, cause, event)
@@ -68,25 +70,20 @@ trait JavaLoggingAdapter extends LoggingAdapter {
 
   def isDebugEnabled = logger.isLoggable(logging.Level.CONFIG)
 
-  protected def notifyError(message: String) {
+  protected def notifyError(message: String): Unit =
     log(logging.Level.SEVERE, null, message)
-  }
 
-  protected def notifyError(cause: Throwable, message: String) {
+  protected def notifyError(cause: Throwable, message: String): Unit =
     log(logging.Level.SEVERE, cause, message)
-  }
 
-  protected def notifyWarning(message: String) {
+  protected def notifyWarning(message: String): Unit =
     log(logging.Level.WARNING, null, message)
-  }
 
-  protected def notifyInfo(message: String) {
+  protected def notifyInfo(message: String): Unit =
     log(logging.Level.INFO, null, message)
-  }
 
-  protected def notifyDebug(message: String) {
+  protected def notifyDebug(message: String): Unit =
     log(logging.Level.CONFIG, null, message)
-  }
 
   @inline
   def log(level: logging.Level, cause: Throwable, message: String) {

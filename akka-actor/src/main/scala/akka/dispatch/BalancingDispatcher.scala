@@ -1,16 +1,16 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.dispatch
 
-import akka.actor.{ ActorCell, ActorRef }
+import akka.actor.{ ActorCell }
 import akka.dispatch.sysmsg._
 import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import akka.util.Helpers
 import java.util.{ Comparator, Iterator }
-import java.util.concurrent.{ Executor, LinkedBlockingQueue, ConcurrentLinkedQueue, ConcurrentSkipListSet }
+import java.util.concurrent.{ ConcurrentSkipListSet }
 import akka.actor.ActorSystemImpl
 import scala.concurrent.duration.FiniteDuration
 
@@ -30,14 +30,14 @@ import scala.concurrent.duration.FiniteDuration
  */
 @deprecated("Use BalancingPool instead of BalancingDispatcher", "2.3")
 class BalancingDispatcher(
-  _configurator: MessageDispatcherConfigurator,
-  _id: String,
-  throughput: Int,
-  throughputDeadlineTime: Duration,
-  _mailboxType: MailboxType,
+  _configurator:                   MessageDispatcherConfigurator,
+  _id:                             String,
+  throughput:                      Int,
+  throughputDeadlineTime:          Duration,
+  _mailboxType:                    MailboxType,
   _executorServiceFactoryProvider: ExecutorServiceFactoryProvider,
-  _shutdownTimeout: FiniteDuration,
-  attemptTeamWork: Boolean)
+  _shutdownTimeout:                FiniteDuration,
+  attemptTeamWork:                 Boolean)
   extends Dispatcher(_configurator, _id, throughput, throughputDeadlineTime, _executorServiceFactoryProvider, _shutdownTimeout) {
 
   /**

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.io
@@ -38,6 +38,16 @@ private[io] abstract class TcpConnection(val tcp: TcpExt, val channel: SocketCha
   private[this] var readingSuspended = pullMode
   private[this] var interestedInResume: Option[ActorRef] = None
   var closedMessage: CloseInformation = _ // for ConnectionClosed message in postStop
+  private var watchedActor: ActorRef = context.system.deadLetters
+
+  def signDeathPact(actor: ActorRef): Unit = {
+    unsignDeathPact()
+    watchedActor = actor
+    context.watch(watchedActor)
+  }
+
+  def unsignDeathPact(): Unit =
+    if (watchedActor ne context.system.deadLetters) context.unwatch(watchedActor)
 
   def writePending = pendingWrite ne EmptyPendingWrite
 
@@ -268,6 +278,8 @@ private[io] abstract class TcpConnection(val tcp: TcpExt, val channel: SocketCha
       peerClosed = true
       context.become(peerSentEOF(info))
     case _ if writePending ⇒ // finish writing first
+      // Our registered actor is now free to terminate cleanly
+      unsignDeathPact()
       if (TraceLogging) log.debug("Got Close command but write is still pending.")
       context.become(closingWithPendingWrite(info, closeCommander, closedEvent))
     case ConfirmedClosed ⇒ // shutdown output and wait for confirmation
@@ -376,9 +388,9 @@ private[io] abstract class TcpConnection(val tcp: TcpExt, val channel: SocketCha
   class PendingBufferWrite(
     val commander: ActorRef,
     remainingData: ByteString,
-    ack: Any,
-    buffer: ByteBuffer,
-    tail: WriteCommand) extends PendingWrite {
+    ack:           Any,
+    buffer:        ByteBuffer,
+    tail:          WriteCommand) extends PendingWrite {
 
     def doWrite(info: ConnectionInfo): PendingWrite = {
       @tailrec def writeToChannel(data: ByteString): PendingWrite = {
@@ -417,11 +429,11 @@ private[io] abstract class TcpConnection(val tcp: TcpExt, val channel: SocketCha
 
   class PendingWriteFile(
     val commander: ActorRef,
-    fileChannel: FileChannel,
-    offset: Long,
-    remaining: Long,
-    ack: Event,
-    tail: WriteCommand) extends PendingWrite with Runnable {
+    fileChannel:   FileChannel,
+    offset:        Long,
+    remaining:     Long,
+    ack:           Event,
+    tail:          WriteCommand) extends PendingWrite with Runnable {
 
     def doWrite(info: ConnectionInfo): PendingWrite = {
       tcp.fileIoDispatcher.execute(this)
@@ -467,10 +479,11 @@ private[io] object TcpConnection {
   /**
    * Groups required connection-related data that are only available once the connection has been fully established.
    */
-  final case class ConnectionInfo(registration: ChannelRegistration,
-                                  handler: ActorRef,
-                                  keepOpenOnPeerClosed: Boolean,
-                                  useResumeWriting: Boolean)
+  final case class ConnectionInfo(
+    registration:         ChannelRegistration,
+    handler:              ActorRef,
+    keepOpenOnPeerClosed: Boolean,
+    useResumeWriting:     Boolean)
 
   // INTERNAL MESSAGES
 

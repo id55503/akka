@@ -1,10 +1,11 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.actor;
 
 //#imports1
 import akka.actor.Props;
+import docs.AbstractJavaTest;
 import scala.concurrent.duration.Duration;
 import java.util.concurrent.TimeUnit;
 //#imports1
@@ -20,11 +21,11 @@ import akka.testkit.AkkaSpec;
 import akka.testkit.AkkaJUnitActorSystemResource;
 import org.junit.*;
 
-public class SchedulerDocTest {
-
-  @Rule
-  public AkkaJUnitActorSystemResource actorSystemResource =
-    new AkkaJUnitActorSystemResource("SchedulerDocTest", AkkaSpec.testConf());
+public class SchedulerDocTest extends AbstractJavaTest {
+  
+  @ClassRule
+  public static AkkaJUnitActorSystemResource actorSystemResource = new AkkaJUnitActorSystemResource("SchedulerDocTest",
+      AkkaSpec.testConf());
 
   private final ActorSystem system = actorSystemResource.getSystem();
   private ActorRef testActor = system.actorOf(Props.create(MyUntypedActor.class));

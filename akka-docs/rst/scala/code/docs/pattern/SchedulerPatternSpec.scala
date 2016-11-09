@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package docs.pattern
@@ -88,12 +88,14 @@ class SchedulerPatternSpec extends AkkaSpec {
   }
 
   "send periodic ticks from the constructor" taggedAs TimingTest in {
-    testSchedule(system.actorOf(Props(classOf[ScheduleInConstructor], testActor)),
+    testSchedule(
+      system.actorOf(Props(classOf[ScheduleInConstructor], testActor)),
       3000 millis, 2000 millis)
   }
 
   "send ticks from the preStart and receive" taggedAs TimingTest in {
-    testSchedule(system.actorOf(Props(classOf[ScheduleInConstructor], testActor)),
+    testSchedule(
+      system.actorOf(Props(classOf[ScheduleInConstructor], testActor)),
       3000 millis, 2500 millis)
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
@@ -12,7 +12,6 @@ import akka.remote.PhiAccrualFailureDetector
 import akka.util.Helpers.ConfigOps
 import akka.actor.Address
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class ClusterConfigSpec extends AkkaSpec {
 
   "Clustering" must {
@@ -34,11 +33,12 @@ class ClusterConfigSpec extends AkkaSpec {
       GossipTimeToLive should ===(2 seconds)
       HeartbeatInterval should ===(1 second)
       MonitoredByNrOfMembers should ===(5)
-      HeartbeatExpectedResponseAfter should ===(5 seconds)
+      HeartbeatExpectedResponseAfter should ===(1 seconds)
       LeaderActionsInterval should ===(1 second)
       UnreachableNodesReaperInterval should ===(1 second)
       PublishStatsInterval should ===(Duration.Undefined)
       AutoDownUnreachableAfter should ===(Duration.Undefined)
+      DownRemovalMargin should ===(Duration.Zero)
       MinNrOfMembers should ===(1)
       MinNrOfMembersOfRole should ===(Map.empty[String, Int])
       Roles should ===(Set.empty[String])

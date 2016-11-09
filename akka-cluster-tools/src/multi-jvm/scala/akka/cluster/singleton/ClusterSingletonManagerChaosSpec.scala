@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster.singleton
@@ -38,7 +38,7 @@ object ClusterSingletonManagerChaosSpec extends MultiNodeConfig {
 
   commonConfig(ConfigFactory.parseString("""
     akka.loglevel = INFO
-    akka.actor.provider = "akka.cluster.ClusterActorRefProvider"
+    akka.actor.provider = "cluster"
     akka.remote.log-remote-lifecycle-events = off
     akka.cluster.auto-down-unreachable-after = 0s
     """))
@@ -77,11 +77,12 @@ class ClusterSingletonManagerChaosSpec extends MultiNodeSpec(ClusterSingletonMan
   }
 
   def createSingleton(): ActorRef = {
-    system.actorOf(ClusterSingletonManager.props(
-      singletonProps = Props(classOf[Echo], testActor),
-      terminationMessage = PoisonPill,
-      settings = ClusterSingletonManagerSettings(system).withSingletonName("echo")),
-      name = "singleton")
+    system.actorOf(
+      ClusterSingletonManager.props(
+        singletonProps = Props(classOf[Echo], testActor),
+        terminationMessage = PoisonPill,
+        settings = ClusterSingletonManagerSettings(system)),
+      name = "echo")
   }
 
   def crash(roles: RoleName*): Unit = {
@@ -94,7 +95,7 @@ class ClusterSingletonManagerChaosSpec extends MultiNodeSpec(ClusterSingletonMan
   }
 
   def echo(oldest: RoleName): ActorSelection =
-    system.actorSelection(RootActorPath(node(oldest).address) / "user" / "singleton" / "echo")
+    system.actorSelection(RootActorPath(node(oldest).address) / "user" / "echo" / "singleton")
 
   def awaitMemberUp(memberProbe: TestProbe, nodes: RoleName*): Unit = {
     runOn(nodes.filterNot(_ == nodes.head): _*) {

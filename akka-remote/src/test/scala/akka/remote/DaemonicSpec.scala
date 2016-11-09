@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -11,7 +11,6 @@ import java.nio.channels.ServerSocketChannel
 import java.net.InetSocketAddress
 import scala.collection.JavaConverters._
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class DaemonicSpec extends AkkaSpec {
 
   def addr(sys: ActorSystem, proto: String) =
@@ -33,7 +32,7 @@ class DaemonicSpec extends AkkaSpec {
       // create a separate actor system that we can check the threads for
       val daemonicSystem = ActorSystem("daemonic", ConfigFactory.parseString("""
         akka.daemonic = on
-        akka.actor.provider = "akka.remote.RemoteActorRefProvider"
+        akka.actor.provider = remote
         akka.remote.netty.tcp.transport-class = "akka.remote.transport.netty.NettyTransport"
         akka.remote.netty.tcp.port = 0
         akka.log-dead-letters-during-shutdown = off

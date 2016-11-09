@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -8,11 +8,12 @@ import com.typesafe.config._
 import scala.concurrent.{ Await, Future }
 import TypedActorRemoteDeploySpec._
 import akka.actor.{ Deploy, ActorSystem, TypedProps, TypedActor }
+import akka.util.IgnoreForScala212
 import scala.concurrent.duration._
 
 object TypedActorRemoteDeploySpec {
   val conf = ConfigFactory.parseString("""
-      akka.actor.provider = "akka.remote.RemoteActorRefProvider"
+      akka.actor.provider = remote
       akka.remote.netty.tcp.port = 0
                                                             """)
 
@@ -46,11 +47,11 @@ class TypedActorRemoteDeploySpec extends AkkaSpec(conf) {
 
   "Typed actors" must {
 
-    "be possible to deploy remotely and communicate with" in {
+    "be possible to deploy remotely and communicate with" taggedAs IgnoreForScala212 in {
       verify({ _.getName }, remoteName)
     }
 
-    "be possible to deploy remotely and be able to dereference self" in {
+    "be possible to deploy remotely and be able to dereference self" taggedAs IgnoreForScala212 in {
       verify({ _.getNameSelfDeref }, remoteName)
     }
 

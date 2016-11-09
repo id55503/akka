@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package sample.persistence;
@@ -101,7 +101,7 @@ class ExamplePersistentActor extends AbstractPersistentActor {
                 final String data = c.getData();
                 final Evt evt1 = new Evt(data + "-" + getNumEvents());
                 final Evt evt2 = new Evt(data + "-" + (getNumEvents() + 1));
-                persist(asList(evt1, evt2), (Evt evt) -> {
+                persistAll(asList(evt1, evt2), (Evt evt) -> {
                     state.update(evt);
                     if (evt.equals(evt2)) {
                         context().system().eventStream().publish(evt);
@@ -127,7 +127,7 @@ public class PersistentActorExample {
         persistentActor.tell(new Cmd("buzz"), null);
         persistentActor.tell("print", null);
 
-        Thread.sleep(1000);
+        Thread.sleep(10000);
         system.terminate();
     }
 }

@@ -1,19 +1,16 @@
 /*
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
 
 // TODO remove metrics
 
-import language.postfixOps
 import scala.concurrent.duration._
 import akka.testkit.{ LongRunningTest, AkkaSpec }
-import scala.concurrent.forkjoin.ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class EWMASpec extends AkkaSpec(MetricsEnabledSpec.config) with MetricsCollectorFactory {
-  import system.dispatcher
 
   val collector = createMetricsCollector
 
@@ -96,7 +93,7 @@ class EWMASpec extends AkkaSpec(MetricsEnabledSpec.config) with MetricsCollector
               } else None
           }
         }
-        streamingDataSet ++= changes.map(m ⇒ m.name -> m)
+        streamingDataSet ++= changes.map(m ⇒ m.name → m)
       }
     }
   }

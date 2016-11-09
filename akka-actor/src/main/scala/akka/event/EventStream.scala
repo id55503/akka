@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.event
 
@@ -126,7 +126,7 @@ class EventStream(sys: ActorSystem, private val debug: Boolean) extends LoggingB
    *
    * The actual check if the subscriber still has subscriptions is performed by the `EventStreamUnsubscriber`,
    * because it's an expensive operation, and we don want to block client-code for that long, the Actor will eventually
-   * catch up and perform the apropriate operation.
+   * catch up and perform the appropriate operation.
    */
   @tailrec
   private def unregisterIfNoMoreSubscribedChannels(subscriber: ActorRef): Unit = {

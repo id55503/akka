@@ -1,12 +1,12 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package sample.redelivery
 
 import akka.actor._
 import scala.concurrent.duration._
-import scala.concurrent.forkjoin.ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom
 import java.util.UUID
 
 object SimpleOrderedRedeliverer {
@@ -136,7 +136,7 @@ object Receiver {
 
 class Receiver extends Actor {
   /**
-   * Simulate loosing 75% of all messages on the receiving end. We want to see the redelivery in action!
+   * Simulate losing 75% of all messages on the receiving end. We want to see the redelivery in action!
    */
   def shouldSendAck = ThreadLocalRandom.current.nextDouble() < 0.25
 

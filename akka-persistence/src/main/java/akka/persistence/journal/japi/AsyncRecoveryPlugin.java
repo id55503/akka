@@ -1,12 +1,13 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.persistence.journal.japi;
 
+import java.util.function.Consumer;
+
 import scala.concurrent.Future;
 
-import akka.japi.Procedure;
 import akka.persistence.PersistentRepr;
 
 interface AsyncRecoveryPlugin {
@@ -22,6 +23,10 @@ interface AsyncRecoveryPlugin {
    * marked as deleted. In this case a replayed message's `deleted` method must
    * return `true`.
    *
+   * The `toSequenceNr` is the lowest of what was returned by
+   * {@link #doAsyncReadHighestSequenceNr} and what the user specified as
+   * recovery {@link akka.persistence.Recovery} parameter.
+   *
    * @param persistenceId
    *          id of the persistent actor.
    * @param fromSequenceNr
@@ -33,12 +38,16 @@ interface AsyncRecoveryPlugin {
    * @param replayCallback
    *          called to replay a single message. Can be called from any thread.
    */
-  Future<Void> doAsyncReplayMessages(String persistenceId, long fromSequenceNr, long toSequenceNr, long max,
-      Procedure<PersistentRepr> replayCallback);
+  Future<Void> doAsyncReplayMessages(String persistenceId, long fromSequenceNr,
+      long toSequenceNr, long max, Consumer<PersistentRepr> replayCallback);
 
   /**
    * Java API, Plugin API: asynchronously reads the highest stored sequence
-   * number for the given `persistenceId`.
+   * number for the given `persistenceId`. The persistent actor will use the
+   * highest sequence number after recovery as the starting point when
+   * persisting new events. This sequence number is also used as `toSequenceNr`
+   * in subsequent call to [[#asyncReplayMessages]] unless the user has
+   * specified a lower `toSequenceNr`.
    *
    * @param persistenceId
    *          id of the persistent actor.

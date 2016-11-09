@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.cluster
@@ -7,11 +7,7 @@ package akka.cluster
 import org.scalatest.WordSpec
 import org.scalatest.Matchers
 import akka.actor.Address
-import akka.routing.ConsistentHash
-import scala.concurrent.duration._
-import scala.collection.immutable
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class HeartbeatNodeRingSpec extends WordSpec with Matchers {
 
   val aa = UniqueAddress(Address("akka.tcp", "sys", "aa", 2552), 1)

@@ -1,24 +1,28 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.cluster
 
 // TODO remove metrics
 
+import java.util.UUID
+
 import language.implicitConversions
-import org.scalatest.{ Suite, Outcome, Canceled }
+import org.scalatest.{ Canceled, Outcome, Suite }
 import org.scalatest.exceptions.TestCanceledException
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import akka.remote.testconductor.RoleName
-import akka.remote.testkit.{ STMultiNodeSpec, MultiNodeSpec }
+import akka.remote.testkit.{ FlightRecordingSupport, MultiNodeSpec, STMultiNodeSpec }
 import akka.testkit._
 import akka.testkit.TestEvent._
 import akka.actor.{ ActorSystem, Address }
 import akka.event.Logging.ErrorLevel
+
 import scala.concurrent.duration._
 import scala.collection.immutable
 import java.util.concurrent.ConcurrentHashMap
+
 import akka.remote.DefaultFailureDetectorRegistry
 import akka.actor.ActorRef
 import akka.actor.Actor
@@ -33,8 +37,8 @@ object MultiNodeClusterSpec {
   def clusterConfig(failureDetectorPuppet: Boolean): Config =
     if (failureDetectorPuppet) clusterConfigWithFailureDetectorPuppet else clusterConfig
 
-  def clusterConfig: Config = ConfigFactory.parseString("""
-    akka.actor.provider = akka.cluster.ClusterActorRefProvider
+  def clusterConfig: Config = ConfigFactory.parseString(s"""
+    akka.actor.provider = cluster
     akka.cluster {
       jmx.enabled                         = off
       gossip-interval                     = 200 ms
@@ -47,11 +51,18 @@ object MultiNodeClusterSpec {
     akka.loglevel = INFO
     akka.log-dead-letters = off
     akka.log-dead-letters-during-shutdown = off
-    akka.remote.log-remote-lifecycle-events = off
+    akka.remote {
+      log-remote-lifecycle-events = off
+      artery.advanced.flight-recorder {
+        enabled=on
+        destination=target/flight-recorder-${UUID.randomUUID().toString}.afr
+      }
+    }
     akka.loggers = ["akka.testkit.TestEventListener"]
     akka.test {
       single-expect-default = 5 s
     }
+
     """)
 
   // sometimes we need to coordinate test shutdown with messages instead of barriers
@@ -77,26 +88,33 @@ object MultiNodeClusterSpec {
   }
 }
 
-trait MultiNodeClusterSpec extends Suite with STMultiNodeSpec with WatchedByCoroner { self: MultiNodeSpec ⇒
+trait MultiNodeClusterSpec extends Suite with STMultiNodeSpec with WatchedByCoroner with FlightRecordingSupport { self: MultiNodeSpec ⇒
 
   override def initialParticipants = roles.size
 
   private val cachedAddresses = new ConcurrentHashMap[RoleName, Address]
 
-  override def atStartup(): Unit = {
+  override protected def atStartup(): Unit = {
     startCoroner()
     muteLog()
+    self.atStartup()
   }
 
-  override def afterTermination(): Unit = {
+  override protected def afterTermination(): Unit = {
+    self.afterTermination()
     stopCoroner()
+    if (failed || sys.props.get("akka.remote.artery.always-dump-flight-recorder").isDefined) {
+      printFlightRecording()
+    }
+    deleteFlightRecorderFile()
   }
 
   override def expectedTestDuration = 60.seconds
 
   def muteLog(sys: ActorSystem = system): Unit = {
     if (!sys.log.isDebugEnabled) {
-      Seq(".*Metrics collection has started successfully.*",
+      Seq(
+        ".*Metrics collection has started successfully.*",
         ".*Metrics will be retreived from MBeans.*",
         ".*Cluster Node.* - registered cluster JMX MBean.*",
         ".*Cluster Node.* - is starting up.*",
@@ -272,7 +290,8 @@ trait MultiNodeClusterSpec extends Suite with STMultiNodeSpec with WatchedByCoro
       val expectedLeader = roleOfLeader(nodesInCluster)
       val leader = clusterView.leader
       val isLeader = leader == Some(clusterView.selfAddress)
-      assert(isLeader == isNode(expectedLeader),
+      assert(
+        isLeader == isNode(expectedLeader),
         "expectedLeader [%s], got leader [%s], members [%s]".format(expectedLeader, leader, clusterView.members))
       clusterView.status should (be(MemberStatus.Up) or be(MemberStatus.Leaving))
     }
@@ -282,9 +301,9 @@ trait MultiNodeClusterSpec extends Suite with STMultiNodeSpec with WatchedByCoro
    * Also asserts that nodes in the 'canNotBePartOfMemberRing' are *not* part of the cluster ring.
    */
   def awaitMembersUp(
-    numberOfMembers: Int,
-    canNotBePartOfMemberRing: Set[Address] = Set.empty,
-    timeout: FiniteDuration = 25.seconds): Unit = {
+    numberOfMembers:          Int,
+    canNotBePartOfMemberRing: Set[Address]   = Set.empty,
+    timeout:                  FiniteDuration = 25.seconds): Unit = {
     within(timeout) {
       if (!canNotBePartOfMemberRing.isEmpty) // don't run this on an empty set
         awaitAssert(canNotBePartOfMemberRing foreach (a ⇒ clusterView.members.map(_.address) should not contain (a)))
@@ -303,7 +322,7 @@ trait MultiNodeClusterSpec extends Suite with STMultiNodeSpec with WatchedByCoro
    * Wait until the specified nodes have seen the same gossip overview.
    */
   def awaitSeenSameState(addresses: Address*): Unit =
-    awaitAssert((addresses.toSet -- clusterView.seenBy) should ===(Set.empty))
+    awaitAssert((addresses.toSet diff clusterView.seenBy) should ===(Set.empty))
 
   /**
    * Leader according to the address ordering of the roles.
@@ -343,7 +362,7 @@ trait MultiNodeClusterSpec extends Suite with STMultiNodeSpec with WatchedByCoro
    */
   def markNodeAsUnavailable(address: Address): Unit = {
     if (isFailureDetectorPuppet) {
-      // before marking it as unavailble there should be at least one heartbeat
+      // before marking it as unavailable there should be at least one heartbeat
       // to create the FailureDetectorPuppet in the FailureDetectorRegistry
       cluster.failureDetector.heartbeat(address)
       failureDetectorPuppet(address) foreach (_.markNodeAsUnavailable())

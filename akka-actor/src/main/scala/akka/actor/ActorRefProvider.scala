@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 
 package akka.actor
@@ -8,13 +8,12 @@ import akka.dispatch.sysmsg._
 import akka.dispatch.{ UnboundedMessageQueueSemantics, RequiresMessageQueue }
 import akka.routing._
 import akka.event._
-import akka.util.{ Switch, Helpers }
+import akka.util.{ Helpers }
 import akka.japi.Util.immutableSeq
 import akka.util.Collections.EmptyImmutableSeq
-import scala.util.{ Success, Failure }
 import scala.util.control.NonFatal
 import java.util.concurrent.atomic.AtomicLong
-import scala.concurrent.{ ExecutionContext, ExecutionContextExecutor, Future, Promise }
+import scala.concurrent.{ ExecutionContextExecutor, Future, Promise }
 import scala.annotation.implicitNotFound
 import akka.ConfigurationException
 import akka.dispatch.Mailboxes
@@ -106,14 +105,14 @@ trait ActorRefProvider {
    * the latter can be suppressed by setting ``lookupDeploy`` to ``false``.
    */
   def actorOf(
-    system: ActorSystemImpl,
-    props: Props,
-    supervisor: InternalActorRef,
-    path: ActorPath,
+    system:        ActorSystemImpl,
+    props:         Props,
+    supervisor:    InternalActorRef,
+    path:          ActorPath,
     systemService: Boolean,
-    deploy: Option[Deploy],
-    lookupDeploy: Boolean,
-    async: Boolean): InternalActorRef
+    deploy:        Option[Deploy],
+    lookupDeploy:  Boolean,
+    async:         Boolean): InternalActorRef
 
   /**
    * INTERNAL API
@@ -476,20 +475,22 @@ private[akka] object LocalActorRefProvider {
  * Depending on this class is not supported, only the [[ActorRefProvider]] interface is supported.
  */
 private[akka] class LocalActorRefProvider private[akka] (
-  _systemName: String,
+  _systemName:           String,
   override val settings: ActorSystem.Settings,
-  val eventStream: EventStream,
-  val dynamicAccess: DynamicAccess,
+  val eventStream:       EventStream,
+  val dynamicAccess:     DynamicAccess,
   override val deployer: Deployer,
-  _deadLetters: Option[ActorPath ⇒ InternalActorRef])
+  _deadLetters:          Option[ActorPath ⇒ InternalActorRef])
   extends ActorRefProvider {
 
   // this is the constructor needed for reflectively instantiating the provider
-  def this(_systemName: String,
-           settings: ActorSystem.Settings,
-           eventStream: EventStream,
-           dynamicAccess: DynamicAccess) =
-    this(_systemName,
+  def this(
+    _systemName:   String,
+    settings:      ActorSystem.Settings,
+    eventStream:   EventStream,
+    dynamicAccess: DynamicAccess) =
+    this(
+      _systemName,
       settings,
       eventStream,
       dynamicAccess,
@@ -498,7 +499,7 @@ private[akka] class LocalActorRefProvider private[akka] (
 
   override val rootPath: ActorPath = RootActorPath(Address("akka", _systemName))
 
-  private[akka] val log: LoggingAdapter = Logging(eventStream, getClass.getName + "(" + rootPath.address + ")")
+  private[akka] val log: MarkerLoggingAdapter = Logging.withMarker(eventStream, getClass.getName + "(" + rootPath.address + ")")
 
   override val deadLetters: InternalActorRef =
     _deadLetters.getOrElse((p: ActorPath) ⇒ new DeadLetterActorRef(this, p, eventStream)).apply(rootPath / "deadLetters")
@@ -769,16 +770,16 @@ private[akka] class LocalActorRefProvider private[akka] (
 
       case router ⇒
         val lookup = if (lookupDeploy) deployer.lookup(path) else None
-        val fromProps = Iterator(props.deploy.copy(routerConfig = props.deploy.routerConfig withFallback router))
-        val d = fromProps ++ deploy.iterator ++ lookup.iterator reduce ((a, b) ⇒ b withFallback a)
-        val p = props.withRouter(d.routerConfig)
+        val r = router :: deploy.map(_.routerConfig).toList ::: lookup.map(_.routerConfig).toList reduce ((a, b) ⇒ b withFallback a)
+        val p = props.withRouter(r)
 
         if (!system.dispatchers.hasDispatcher(p.dispatcher))
           throw new ConfigurationException(s"Dispatcher [${p.dispatcher}] not configured for routees of $path")
-        if (!system.dispatchers.hasDispatcher(d.routerConfig.routerDispatcher))
+        if (!system.dispatchers.hasDispatcher(r.routerDispatcher))
           throw new ConfigurationException(s"Dispatcher [${p.dispatcher}] not configured for router of $path")
 
-        val routerProps = Props(p.deploy.copy(dispatcher = p.routerConfig.routerDispatcher),
+        val routerProps = Props(
+          p.deploy.copy(dispatcher = p.routerConfig.routerDispatcher),
           classOf[RoutedActorCell.RouterActorCreator], Vector(p.routerConfig))
         val routeeProps = p.withRouter(NoRouter)
 

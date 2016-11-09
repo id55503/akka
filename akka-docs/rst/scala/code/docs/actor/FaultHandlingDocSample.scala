@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package docs.actor
 
@@ -134,10 +134,11 @@ class CounterService extends Actor {
 
   // Restart the storage child when StorageException is thrown.
   // After 3 restarts within 5 seconds it will be stopped.
-  override val supervisorStrategy = OneForOneStrategy(maxNrOfRetries = 3,
+  override val supervisorStrategy = OneForOneStrategy(
+    maxNrOfRetries = 3,
     withinTimeRange = 5 seconds) {
-      case _: Storage.StorageException => Restart
-    }
+    case _: Storage.StorageException => Restart
+  }
 
   val key = self.path.name
   var storage: Option[ActorRef] = None

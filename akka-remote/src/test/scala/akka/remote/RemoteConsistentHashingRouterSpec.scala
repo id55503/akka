@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2009-2015 Typesafe Inc. <http://www.typesafe.com>
+ * Copyright (C) 2009-2016 Lightbend Inc. <http://www.lightbend.com>
  */
 package akka.remote
 
@@ -9,9 +9,8 @@ import akka.routing.ActorSelectionRoutee
 import akka.routing.ConsistentRoutee
 import akka.routing.ConsistentHash
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class RemoteConsistentHashingRouterSpec extends AkkaSpec("""
-    akka.actor.provider = "akka.remote.RemoteActorRefProvider" """) {
+    akka.actor.provider = remote """) {
 
   "ConsistentHashingGroup" must {
 

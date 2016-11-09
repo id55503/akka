@@ -5,6 +5,7 @@ import akka.actor.ActorSystem;
 
 import akka.japi.*;
 import org.junit.ClassRule;
+import org.scalatest.junit.JUnitSuite;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.Promise;
@@ -22,7 +23,7 @@ import static akka.japi.Util.classTag;
 
 import akka.testkit.AkkaSpec;
 
-public class JavaFutureTests {
+public class JavaFutureTests extends JUnitSuite {
 
   @ClassRule
   public static AkkaJUnitActorSystemResource actorSystemResource =
@@ -62,7 +63,7 @@ public class JavaFutureTests {
     }, system.dispatcher());
 
     cf.success("foo");
-    assertTrue(latch.await(5000, TimeUnit.MILLISECONDS));
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
     assertEquals(Await.result(f, timeout), "foo");
   }
 
@@ -80,7 +81,7 @@ public class JavaFutureTests {
 
     Throwable exception = new NullPointerException();
     cf.failure(exception);
-    assertTrue(latch.await(5000, TimeUnit.MILLISECONDS));
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
     assertEquals(f.value().get().failed().get(), exception);
   }
 
@@ -96,7 +97,7 @@ public class JavaFutureTests {
     }, system.dispatcher());
 
     cf.success("foo");
-    assertTrue(latch.await(5000, TimeUnit.MILLISECONDS));
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
     assertEquals(Await.result(f, timeout), "foo");
   }
 
@@ -112,7 +113,7 @@ public class JavaFutureTests {
     },system.dispatcher());
 
     cf.success("foo");
-    assertTrue(latch.await(5000, TimeUnit.MILLISECONDS));
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
     assertEquals(Await.result(f, timeout), "foo");
   }
 
@@ -134,7 +135,7 @@ public class JavaFutureTests {
 
     assertEquals(Await.result(f, timeout), "1000");
     assertEquals(Await.result(r, timeout).intValue(), 1000);
-    assertTrue(latch.await(5000, TimeUnit.MILLISECONDS));
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
   }
 
   @Test
@@ -150,7 +151,7 @@ public class JavaFutureTests {
     }), system.dispatcher());
 
     cf.success("foo");
-    assertTrue(latch.await(5000, TimeUnit.MILLISECONDS));
+    assertTrue(latch.await(5, TimeUnit.SECONDS));
     assertEquals(Await.result(f, timeout), "foo");
     assertEquals(Await.result(r, timeout), "foo");
   }

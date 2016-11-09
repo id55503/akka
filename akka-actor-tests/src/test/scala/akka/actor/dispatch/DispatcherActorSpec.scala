@@ -3,13 +3,12 @@ package akka.actor.dispatch
 import language.postfixOps
 
 import java.util.concurrent.{ CountDownLatch, TimeUnit }
-import java.util.concurrent.atomic.{ AtomicBoolean, AtomicInteger }
-import akka.testkit.{ filterEvents, EventFilter, AkkaSpec }
+import java.util.concurrent.atomic.{ AtomicBoolean }
+import akka.testkit.{ AkkaSpec }
 import akka.actor.{ Props, Actor }
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import akka.testkit.DefaultTimeout
-import akka.dispatch.{ PinnedDispatcher, Dispatchers, Dispatcher }
 import akka.pattern.ask
 
 object DispatcherActorSpec {
@@ -20,8 +19,7 @@ object DispatcherActorSpec {
       throughput = 101
       executor = "thread-pool-executor"
       thread-pool-executor {
-        core-pool-size-min = 1
-        core-pool-size-max = 1
+        fixed-pool-size = 1
       }
     }
     test-throughput-deadline-dispatcher {
@@ -29,8 +27,7 @@ object DispatcherActorSpec {
       throughput-deadline-time = 100 milliseconds
       executor = "thread-pool-executor"
       thread-pool-executor {
-        core-pool-size-min = 1
-        core-pool-size-max = 1
+        fixed-pool-size = 1
       }
     }
 
@@ -52,7 +49,6 @@ object DispatcherActorSpec {
   }
 }
 
-@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class DispatcherActorSpec extends AkkaSpec(DispatcherActorSpec.config) with DefaultTimeout {
   import DispatcherActorSpec._
 
